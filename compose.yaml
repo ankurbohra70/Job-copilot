@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: job_copilot
+      POSTGRES_USER: job_copilot
+      POSTGRES_PASSWORD: job_copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - job_copilot_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U job_copilot -d job_copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  job_copilot_postgres_data:
