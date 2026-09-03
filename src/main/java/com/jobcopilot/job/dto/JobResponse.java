@@ -1,5 +1,7 @@
 package com.jobcopilot.job.dto;
 
+import com.jobcopilot.job.JobStatus;
+
 import java.time.LocalDateTime;
 
 public record JobResponse(
@@ -11,6 +13,7 @@ public record JobResponse(
         String description,
         String source,
         String externalJobId,
+        JobStatus status,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

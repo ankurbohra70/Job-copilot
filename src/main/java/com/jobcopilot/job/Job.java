@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -39,6 +41,10 @@ class Job {
 
     @Column(name = "external_job_id", length = 255)
     private String externalJobId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32, columnDefinition = "varchar(32) default 'DISCOVERED'")
+    private JobStatus status = JobStatus.DISCOVERED;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -111,11 +117,37 @@ class Job {
         return externalJobId;
     }
 
+    JobStatus getStatus() {
+        return status;
+    }
+
     LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    void replaceDetails(
+            String title,
+            String company,
+            String location,
+            String jobUrl,
+            String description,
+            String source,
+            String externalJobId
+    ) {
+        this.title = title;
+        this.company = company;
+        this.location = location;
+        this.jobUrl = jobUrl;
+        this.description = description;
+        this.source = source;
+        this.externalJobId = externalJobId;
+    }
+
+    void changeStatus(JobStatus status) {
+        this.status = status;
     }
 }
