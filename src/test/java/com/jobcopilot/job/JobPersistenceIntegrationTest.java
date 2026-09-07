@@ -17,6 +17,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -62,6 +66,9 @@ class JobPersistenceIntegrationTest {
 
     @Autowired
     private JobService jobService;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @BeforeEach
     void clearDatabase() {
@@ -148,6 +155,42 @@ class JobPersistenceIntegrationTest {
         assertFalse(ids(firstPage).stream().anyMatch(ids(secondPage)::contains));
         assertEquals(4, firstPage.totalElements());
         assertEquals(2, firstPage.totalPages());
+    }
+
+    @Test
+    void rankingSnapshotsSurviveTransactionCloseAndUseOneBulkQuery() {
+        JobResponse first = jobService.createJob(request("Java Engineer", "Acme", "rank-a"));
+        JobResponse second = jobService.createJob(request("Python Engineer", "Acme", "rank-b"));
+        JobResponse empty = jobService.createJob(request("Unspecified", "Acme", "rank-c"));
+        jobService.replaceRequirements(first.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(
+                List.of("Java"), List.of("Docker"), new java.math.BigDecimal("2")));
+        jobService.replaceRequirements(second.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(
+                List.of("Python"), List.of(), null));
+        jobService.updateJobStatus(first.id(), new UpdateJobStatusRequest(JobStatus.REJECTED));
+
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        List<JobRankingSnapshot> snapshots;
+        try {
+            snapshots = jobService.rankingSnapshots();
+            assertEquals(1, statistics.getPrepareStatementCount());
+        } finally {
+            statistics.setStatisticsEnabled(false);
+        }
+
+        assertEquals(3, snapshots.size());
+        JobRankingSnapshot javaJob = snapshots.stream().filter(item -> item.matching().id().equals(first.id())).findFirst().orElseThrow();
+        assertEquals("Acme", javaJob.company());
+        assertEquals("https://example.com/jobs/rank-a", javaJob.jobUrl());
+        assertEquals(JobStatus.REJECTED, javaJob.status());
+        assertEquals(jobService.getJob(first.id()).createdAt(), javaJob.createdAt());
+        assertEquals(jobService.matchingSnapshot(first.id()), javaJob.matching());
+        assertEquals(List.of("java"), javaJob.matching().requirements().requiredSkills());
+        assertEquals(List.of("docker"), javaJob.matching().requirements().preferredSkills());
+        assertEquals(jobService.matchingSnapshot(empty.id()).requirements(), snapshots.stream()
+                .filter(item -> item.matching().id().equals(empty.id())).findFirst().orElseThrow().matching().requirements());
+        assertTrue(snapshots.stream().anyMatch(item -> item.matching().id().equals(second.id())));
     }
 
     private JobPageResponse search(String searchTerm, JobStatus status) {

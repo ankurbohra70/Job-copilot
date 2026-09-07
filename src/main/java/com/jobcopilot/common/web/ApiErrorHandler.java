@@ -2,6 +2,9 @@ package com.jobcopilot.common.web;
 
 import com.jobcopilot.job.InvalidJobQueryException;
 import com.jobcopilot.job.JobNotFoundException;
+import com.jobcopilot.matching.JobRankingComputationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,6 +23,14 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
+    private static final Logger log = LoggerFactory.getLogger(ApiErrorHandler.class);
+
+    @ExceptionHandler(JobRankingComputationException.class)
+    public ResponseEntity<ApiErrorResponse> handleRankingFailure(JobRankingComputationException exception) {
+        log.error(exception.getMessage(), exception);
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+    }
+
     @ExceptionHandler(com.jobcopilot.job.InvalidJobRequirementsException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRequirements(com.jobcopilot.job.InvalidJobRequirementsException exception) {
         return badRequest(exception.getMessage());

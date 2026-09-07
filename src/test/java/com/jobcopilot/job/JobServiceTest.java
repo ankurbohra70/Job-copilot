@@ -299,6 +299,44 @@ class JobServiceTest {
         );
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void rankingSnapshotsUseTheBulkPathAndEmptyDatabaseIsEmpty() {
+        when(jobRepository.findAllWithSkillsForRanking()).thenReturn(List.of());
+
+        assertTrue(jobService.rankingSnapshots().isEmpty());
+
+        verify(jobRepository).findAllWithSkillsForRanking();
+        verify(jobRepository, never()).findById(any());
+        verify(jobRepository, never()).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    void rankingSnapshotsCopyPresentationMetadataAndMatchingRequirements() {
+        Job rejected = persistedJob(8L, JobStatus.REJECTED);
+        rejected.replaceRequirements(List.of("java"), List.of("docker"), new java.math.BigDecimal("3"));
+        when(jobRepository.findAllWithSkillsForRanking()).thenReturn(List.of(rejected));
+        when(jobRepository.findById(8L)).thenReturn(Optional.of(rejected));
+
+        var snapshots = jobService.rankingSnapshots();
+        var snapshot = snapshots.getFirst();
+        var matching = jobService.matchingSnapshot(8L);
+
+        assertEquals(1, snapshots.size());
+        assertEquals(8L, snapshot.matching().id());
+        assertEquals("Backend Software Engineer", snapshot.matching().title());
+        assertEquals("Example Technologies", snapshot.company());
+        assertEquals("Gurugram", snapshot.matching().location());
+        assertEquals("https://example.com/jobs/123", snapshot.jobUrl());
+        assertEquals(JobStatus.REJECTED, snapshot.status());
+        assertEquals(rejected.getCreatedAt(), snapshot.createdAt());
+        assertEquals(rejected.getUpdatedAt(), snapshot.matching().updatedAt());
+        assertEquals(matching, snapshot.matching());
+        assertEquals(List.of("java"), snapshot.matching().requirements().requiredSkills());
+        assertEquals(List.of("docker"), snapshot.matching().requirements().preferredSkills());
+        verify(jobRepository).findAllWithSkillsForRanking();
+    }
+
     private static CreateJobRequest createRequest() {
         return new CreateJobRequest(
                 "Backend Software Engineer",

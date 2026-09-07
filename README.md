@@ -22,7 +22,7 @@ Schema changes are applied with Flyway. Hibernate `ddl-auto` is `validate` only.
 
 ## Current scope
 
-Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching.
+Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching. JC-004A adds on-demand multi-job ranking for a stored candidate profile.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -37,6 +37,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/resumes` | Upload a text-based PDF resume |
 | `GET` | `/api/resumes/{id}` | Retrieve resume metadata and linked profile |
 | `GET` | `/api/candidate-profiles/{id}` | Retrieve the extracted candidate profile |
+| `GET` | `/api/candidate-profiles/{id}/job-rankings` | Rank all stored jobs for that profile (not persisted) |
 | `POST` | `/api/matches` | Compute an explainable match (not persisted) |
 
 Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
@@ -364,6 +365,36 @@ Matching limitations:
 - There is no LLM, embedding, or vector-database integration in JC-003.
 
 A job with no skills and no positive `minYearsExperience` cannot be scored (`422`).
+
+## Multi-job ranking
+
+`GET /api/candidate-profiles/{candidateProfileId}/job-rankings` ranks every stored job against one candidate profile. Rankings are computed on demand and are not persisted.
+
+JC-004A includes jobs in **every** current `JobStatus`, including `APPLIED`, `REJECTED`, and `WITHDRAWN`. Status is returned on each row so clients can see it. Status eligibility, filters, and pagination belong to a later milestone (JC-004B), not this endpoint.
+
+Windows PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "http://localhost:8080/api/candidate-profiles/1/job-rankings"
+```
+
+```bash
+curl -i http://localhost:8080/api/candidate-profiles/1/job-rankings
+```
+
+Computable jobs are ranked by:
+
+1. `overallScore` descending (`BigDecimal.compareTo`)
+2. `createdAt` descending
+3. `jobId` descending
+
+Ranks are contiguous and one-based (`1, 2, 3, ...`). Recommendation is not a sort key. `updatedAt` is not a tie-breaker.
+
+A job that cannot be scored with the existing engine (no skills and no positive `minYearsExperience`) is **unassessed**, not a bad match. Unassessed jobs have no score, recommendation, or rank. They are returned in `unassessedJobs` with reason `INSUFFICIENT_JOB_REQUIREMENTS`. They are ordered by `createdAt` descending, then `jobId` descending.
+
+`evaluatedJobCount` equals `rankedJobCount + unassessedJobCount`. An empty job store returns `200` with empty arrays and zero counts. A missing candidate profile returns the existing `404` contract and does not scan jobs. An unexpected matching failure fails the whole request with a generic `500`; it does not return a partial ranking.
+
+Each ranked row copies score, recommendation, skill lists, experience comparison, caps, strengths, gaps, warnings, and unassessed factors from the same `DeterministicMatchingEngine` result used by `POST /api/matches`. Category breakdown and role/keyword relevance objects are omitted from the ranking summary; they remain on the single-match API.
 
 ## Configuration
 

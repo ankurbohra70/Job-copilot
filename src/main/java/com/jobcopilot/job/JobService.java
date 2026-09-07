@@ -46,9 +46,14 @@ public class JobService {
 
     @Transactional(readOnly = true)
     public JobMatchingSnapshot matchingSnapshot(Long id) {
-        Job job = findJob(id);
-        return new JobMatchingSnapshot(job.getId(), job.getTitle(), job.getDescription(), job.getLocation(),
-                job.requirements(), job.getUpdatedAt());
+        return toMatchingSnapshot(findJob(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<JobRankingSnapshot> rankingSnapshots() {
+        return jobRepository.findAllWithSkillsForRanking().stream()
+                .map(JobService::toRankingSnapshot)
+                .toList();
     }
 
     private static List<String> normalizedSkills(List<String> skills) {
@@ -209,6 +214,27 @@ public class JobService {
             return null;
         }
         return searchTerm.trim();
+    }
+
+    private static JobMatchingSnapshot toMatchingSnapshot(Job job) {
+        return new JobMatchingSnapshot(
+                job.getId(),
+                job.getTitle(),
+                job.getDescription(),
+                job.getLocation(),
+                job.requirements(),
+                job.getUpdatedAt()
+        );
+    }
+
+    private static JobRankingSnapshot toRankingSnapshot(Job job) {
+        return new JobRankingSnapshot(
+                toMatchingSnapshot(job),
+                job.getCompany(),
+                job.getJobUrl(),
+                job.getStatus(),
+                job.getCreatedAt()
+        );
     }
 
     private static JobResponse toResponse(Job job) {
