@@ -1,0 +1,129 @@
+{
+  "version": "v1",
+  "skills": {
+    "java": [
+      "java"
+    ],
+    "javascript": [
+      "javascript",
+      "js"
+    ],
+    "typescript": [
+      "typescript",
+      "ts"
+    ],
+    "spring-boot": [
+      "spring boot",
+      "spring-boot"
+    ],
+    "spring": [
+      "spring framework"
+    ],
+    "postgresql": [
+      "postgresql",
+      "postgres"
+    ],
+    "python": [
+      "python"
+    ],
+    "c++": [
+      "c++"
+    ],
+    "c#": [
+      "c#"
+    ],
+    ".net": [
+      ".net",
+      "dotnet"
+    ],
+    "docker": [
+      "docker"
+    ],
+    "kubernetes": [
+      "kubernetes",
+      "k8s"
+    ],
+    "sql": [
+      "sql"
+    ],
+    "react": [
+      "react",
+      "react.js"
+    ],
+    "aws": [
+      "aws",
+      "amazon web services"
+    ],
+    "git": [
+      "git"
+    ],
+    "redis": [
+      "redis"
+    ],
+    "maven": [
+      "maven"
+    ]
+  },
+  "roles": {
+    "backend": [
+      "backend engineer",
+      "backend developer",
+      "backend software engineer",
+      "backend development"
+    ],
+    "frontend": [
+      "frontend engineer",
+      "frontend developer",
+      "front end developer"
+    ],
+    "fullstack": [
+      "full stack engineer",
+      "full stack developer",
+      "fullstack developer"
+    ],
+    "data": [
+      "data engineer",
+      "data scientist"
+    ],
+    "devops": [
+      "devops engineer",
+      "site reliability engineer"
+    ]
+  },
+  "stopwords": [
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "our",
+    "the",
+    "this",
+    "to",
+    "we",
+    "with",
+    "you",
+    "your",
+    "will",
+    "years",
+    "experience",
+    "required",
+    "preferred",
+    "skills",
+    "team",
+    "work",
+    "role",
+    "company"
+  ]
+}

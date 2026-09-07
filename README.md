@@ -2,15 +2,27 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The Week-1 backend establishes a complete job-management vertical slice:
+The backend currently covers job management plus JC-003 resume extraction and explainable matching:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
 ```
 
+```text
+PDF Resume
+  → ResumeTextExtractor (PDFBox)
+  → DeterministicProfileParser
+  → CandidateProfile
+  → Job requirements
+  → DeterministicMatchingEngine
+  → Explainable MatchResult
+```
+
+Schema changes are applied with Flyway. Hibernate `ddl-auto` is `validate` only.
+
 ## Current scope
 
-The current API supports job creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering.
+Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -20,8 +32,14 @@ The current API supports job creation, retrieval, replacement, status changes, d
 | `PUT` | `/api/jobs/{id}` | Replace editable job details while preserving identity and status |
 | `PATCH` | `/api/jobs/{id}/status` | Change a job's status |
 | `DELETE` | `/api/jobs/{id}` | Delete a job |
+| `GET` | `/api/jobs/{id}/requirements` | Retrieve matching requirements |
+| `PUT` | `/api/jobs/{id}/requirements` | Replace matching requirements |
+| `POST` | `/api/resumes` | Upload a text-based PDF resume |
+| `GET` | `/api/resumes/{id}` | Retrieve resume metadata and linked profile |
+| `GET` | `/api/candidate-profiles/{id}` | Retrieve the extracted candidate profile |
+| `POST` | `/api/matches` | Compute an explainable match (not persisted) |
 
-Authentication, ingestion, matching, AI, resume processing, application automation, and a frontend are not part of Week 1.
+Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
 
 ## Prerequisites
 
@@ -62,7 +80,7 @@ macOS/Linux:
 ./mvnw clean verify
 ```
 
-The automated tests exercise the controller/API contract, error mappings, service behavior, and entity behavior. A focused integration suite starts an isolated `postgres:17.11-alpine` Testcontainer to verify persistence, Specifications, sorting, pagination, enum storage, and JPA lifecycle timestamps. Docker must be running; the Testcontainer uses a dynamically assigned port and never connects to the persistent development database on `localhost:5432`.
+The automated tests exercise the controller/API contract, error mappings, service behavior, entity behavior, Flyway migrations, PDF extraction, deterministic parsing, and matching. Integration tests start an isolated `postgres:17.11-alpine` Testcontainer. Docker must be running; Testcontainers use a dynamically assigned port and never connect to the persistent development database on `localhost:5432`.
 
 ## Run the application
 
@@ -253,6 +271,100 @@ The following command deliberately deletes the local database and should only be
 docker compose down --volumes
 ```
 
+## Flyway
+
+Hibernate no longer evolves the schema. Flyway owns migrations and is configured with `baseline-on-migrate: false` and `clean-disabled: true`.
+
+| Version | Script | Purpose |
+|---|---|---|
+| V1 | `V1__create_jobs.sql` | Jobs table matching the Week-1 schema, including `status` |
+| V2 | `V2__add_job_requirements.sql` | `min_years_experience` and `job_skills` |
+| V3 | `V3__add_resume_profiles.sql` | `resumes` and `candidate_profiles` |
+
+A new empty database migrates V1 through V3 automatically on startup. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before V2/V3 can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+
+Inspect history with:
+
+```powershell
+docker compose exec postgres psql -U job_copilot -d job_copilot -c "SELECT installed_rank, version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
+```
+
+## Resume upload and candidate profiles
+
+`POST /api/resumes` accepts `multipart/form-data` with a single part named `file`. Only text-based PDFs are supported.
+
+Limitations:
+
+- OCR is not supported. Image-only PDFs are rejected.
+- Extraction and parsing are deterministic rule/vocabulary lookups, not an LLM.
+- Incomplete employment chronology is stored as `UNKNOWN` experience, not as zero years.
+- Extracted text is persisted for later reprocessing. Raw PDF bytes are not stored.
+- Normal API responses do not include the full extracted text.
+- Candidate corrections are deferred; JC-003 extraction is read-only.
+
+Windows PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/resumes" -Form @{
+    file = Get-Item -Path "$env:TEMP\job-copilot-sample-resume.pdf"
+}
+```
+
+```bash
+curl -i -X POST http://localhost:8080/api/resumes \
+  -F "file=@resume.pdf;type=application/pdf"
+```
+
+Expected status: `201 Created` with `Location: /api/resumes/{id}`. Use `GET /api/resumes/{id}` and `GET /api/candidate-profiles/{id}` to retrieve metadata and the structured profile.
+
+## Job matching requirements
+
+Requirements are a separate resource. Replacing them does not change job status. Required skills win if the same canonical skill appears in both lists.
+
+```powershell
+$requirements = @{
+    requiredSkills = @("Java", "Spring Boot", "PostgreSQL", "Redis")
+    preferredSkills = @("Docker", "AWS")
+    minYearsExperience = 1
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Put -Uri "http://localhost:8080/api/jobs/1/requirements" -ContentType "application/json" -Body $requirements
+Invoke-RestMethod -Method Get -Uri "http://localhost:8080/api/jobs/1/requirements"
+```
+
+```bash
+curl -i -X PUT http://localhost:8080/api/jobs/1/requirements \
+  -H "Content-Type: application/json" \
+  -d '{"requiredSkills":["Java","Spring Boot","PostgreSQL","Redis"],"preferredSkills":["Docker","AWS"],"minYearsExperience":1}'
+```
+
+## Matching
+
+`POST /api/matches` computes a score from a stored candidate profile and job. The result is not persisted.
+
+```powershell
+$match = @{ candidateProfileId = 1; jobId = 1 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/matches" -ContentType "application/json" -Body $match
+```
+
+```bash
+curl -i -X POST http://localhost:8080/api/matches \
+  -H "Content-Type: application/json" \
+  -d '{"candidateProfileId":1,"jobId":1}'
+```
+
+The response includes `overallScore`, `recommendation`, matched/missing skills, experience comparison, scoring breakdown, applied caps, strengths, gaps, and unassessed factors such as location/work mode.
+
+Matching limitations:
+
+- Skills match through the versioned canonical vocabulary in `matching-vocabulary.json`, not semantic similarity.
+- Scoring is deterministic and reproducible. It is not a probability of hiring success.
+- Missing evidence can be a parser limitation rather than a true skill gap.
+- Missing required skills cap the overall score (79 if some required skills match, 49 if none match). They do not hard-disqualify.
+- There is no LLM, embedding, or vector-database integration in JC-003.
+
+A job with no skills and no positive `minYearsExperience` cannot be scored (`422`).
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:
@@ -262,13 +374,16 @@ docker compose down --volumes
 | `DB_URL` | `jdbc:postgresql://localhost:5432/job_copilot` |
 | `DB_USERNAME` | `job_copilot` |
 | `DB_PASSWORD` | `job_copilot` |
-| `JPA_DDL_AUTO` | `update` |
+| `RESUME_MAX_FILE_SIZE` | `5MB` |
+| `RESUME_MAX_REQUEST_SIZE` | `6MB` |
+| `RESUME_MAX_BYTES` | `5242880` |
+| `RESUME_MAX_PAGES` | `25` |
+| `RESUME_MAX_CHARACTERS` | `200000` |
+| `RESUME_MIN_MEANINGFUL_CHARACTERS` | `50` |
 
-`ddl-auto=update` is intentionally limited to local development. It is not a production migration strategy. Flyway or another explicit migration tool must be introduced before production deployment or significant schema evolution.
+Hibernate `ddl-auto` is `validate`. Schema evolution is Flyway-only. If validation or migration fails, do not delete the Docker volume automatically: preserve it, inspect `flyway_schema_history`, and apply an explicit local recovery plan.
 
-The new non-null `status` column has a PostgreSQL default of `DISCOVERED` so existing local rows can be backfilled when Hibernate adds the column. Inspect existing rows after the first startup. If schema update fails, do not delete the Docker volume automatically: preserve it and apply an explicit local SQL migration, or deliberately recreate it only if its data is disposable.
-
-Job-ingestion deduplication, including a possible future uniqueness rule for `source` and `externalJobId`, is intentionally deferred to the ingestion milestone. Do not commit production credentials or a secret-bearing `.env` file.
+Job-ingestion deduplication, including a possible future uniqueness rule for `source` and `externalJobId`, is intentionally deferred to the ingestion milestone. Do not commit production credentials, real resumes, or a secret-bearing `.env` file.
 
 ## Troubleshooting
 

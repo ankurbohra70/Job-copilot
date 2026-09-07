@@ -30,6 +30,36 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class JobServiceTest {
+    @Test
+    void rejectsSkillsThatExceedStorageLengthAfterUnicodeNormalization() {
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(persistedJob(7L, JobStatus.DISCOVERED)));
+        assertThrows(InvalidJobRequirementsException.class, () -> jobService.replaceRequirements(7L,
+                new com.jobcopilot.job.dto.JobRequirementsRequest(List.of("\uFB03".repeat(100)), null, null)));
+        verify(jobRepository, never()).saveAndFlush(any());
+    }
+    @Test
+    void requirementsNormalizeAliasesAndRequiredWinsWhileLegacyUpdatesPreserveThem() {
+        Job existing = persistedJob(7L, JobStatus.APPLIED);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+        when(jobRepository.saveAndFlush(any(Job.class))).thenAnswer(i -> i.getArgument(0));
+        var response = jobService.replaceRequirements(7L, new com.jobcopilot.job.dto.JobRequirementsRequest(
+                List.of(" Java ", "Postgres", "postgresql"), List.of("postgres", "Docker"), new java.math.BigDecimal("3")));
+        assertEquals(List.of("java", "postgresql"), response.requiredSkills());
+        assertEquals(List.of("docker"), response.preferredSkills());
+        jobService.updateJob(7L, updateRequest());
+        assertEquals(response, jobService.getRequirements(7L));
+        assertEquals(JobStatus.APPLIED, existing.getStatus());
+    }
+
+    @Test
+    void requirementsCanBeClearedAndMissingJobFails() {
+        Job existing = persistedJob(7L, JobStatus.DISCOVERED);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+        when(jobRepository.saveAndFlush(any(Job.class))).thenAnswer(i -> i.getArgument(0));
+        var response = jobService.replaceRequirements(7L, new com.jobcopilot.job.dto.JobRequirementsRequest(null,null,null));
+        assertTrue(response.requiredSkills().isEmpty());
+        assertThrows(JobNotFoundException.class, () -> jobService.getRequirements(99L));
+    }
 
     private JobRepository jobRepository;
     private JobService jobService;

@@ -29,6 +29,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class JobPersistenceIntegrationTest {
+    @Test
+    void requirementCollectionChangesTouchParentAndRoundTrip() {
+        var created = jobService.createJob(request("Role", "Company", "requirements"));
+        var initial = jobService.getJob(created.id());
+        var requirements = new com.jobcopilot.job.dto.JobRequirementsRequest(List.of("Java"), List.of("Postgres"), null);
+        jobService.replaceRequirements(created.id(), requirements);
+        var updated = jobService.getJob(created.id());
+        assertTrue(updated.updatedAt().isAfter(initial.updatedAt()));
+        assertEquals(initial.createdAt(), updated.createdAt());
+        assertEquals(List.of("java"), jobService.matchingSnapshot(created.id()).requirements().requiredSkills());
+        jobService.replaceRequirements(created.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(null,null,null));
+        assertTrue(jobService.getRequirements(created.id()).requiredSkills().isEmpty());
+        jobService.deleteJob(created.id());
+    }
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
@@ -40,7 +54,7 @@ class JobPersistenceIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     }
 
     @Autowired

@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.List;
+import com.jobcopilot.common.text.MatchingVocabulary;
+import com.jobcopilot.job.dto.JobRequirementsRequest;
+import com.jobcopilot.job.dto.JobRequirementsResponse;
 
 @Service
 public class JobService {
@@ -27,6 +31,33 @@ public class JobService {
     );
 
     private final JobRepository jobRepository;
+
+    @Transactional(readOnly = true)
+    public JobRequirementsResponse getRequirements(Long id) { return findJob(id).requirements(); }
+
+    @Transactional
+    public JobRequirementsResponse replaceRequirements(Long id, JobRequirementsRequest request) {
+        Job job = findJob(id);
+        List<String> required = normalizedSkills(request.requiredSkills());
+        List<String> preferred = normalizedSkills(request.preferredSkills()).stream().filter(s -> !required.contains(s)).toList();
+        job.replaceRequirements(required, preferred, request.minYearsExperience());
+        return jobRepository.saveAndFlush(job).requirements();
+    }
+
+    @Transactional(readOnly = true)
+    public JobMatchingSnapshot matchingSnapshot(Long id) {
+        Job job = findJob(id);
+        return new JobMatchingSnapshot(job.getId(), job.getTitle(), job.getDescription(), job.getLocation(),
+                job.requirements(), job.getUpdatedAt());
+    }
+
+    private static List<String> normalizedSkills(List<String> skills) {
+        if (skills == null) return List.of();
+        return skills.stream().map(MatchingVocabulary.standard()::canonical).peek(skill -> {
+            if (skill.isBlank() || skill.length() > 100 || skill.chars().anyMatch(Character::isISOControl))
+                throw new InvalidJobRequirementsException();
+        }).distinct().sorted().toList();
+    }
 
     JobService(JobRepository jobRepository) {
         this.jobRepository = jobRepository;

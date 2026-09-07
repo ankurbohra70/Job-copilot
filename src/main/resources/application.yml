@@ -7,5 +7,18 @@ spring:
     password: ${DB_PASSWORD:job_copilot}
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    baseline-on-migrate: false
+    clean-disabled: true
+  servlet:
+    multipart:
+      max-file-size: ${RESUME_MAX_FILE_SIZE:5MB}
+      max-request-size: ${RESUME_MAX_REQUEST_SIZE:6MB}
+resume:
+  processing:
+    max-bytes: ${RESUME_MAX_BYTES:5242880}
+    max-pages: ${RESUME_MAX_PAGES:25}
+    max-characters: ${RESUME_MAX_CHARACTERS:200000}
+    min-meaningful-characters: ${RESUME_MIN_MEANINGFUL_CHARACTERS:50}

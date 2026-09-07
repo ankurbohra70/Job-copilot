@@ -12,6 +12,12 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.*;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.JoinColumn;
+import com.jobcopilot.job.dto.JobRequirementsResponse;
 
 @Entity
 @Table(name = "jobs")
@@ -51,6 +57,31 @@ class Job {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "min_years_experience", precision = 4, scale = 2)
+    private BigDecimal minYearsExperience;
+
+    @ElementCollection
+    @CollectionTable(name = "job_skills", joinColumns = @JoinColumn(name = "job_id"))
+    private Set<JobSkill> skills = new HashSet<>();
+
+    void replaceRequirements(List<String> required, List<String> preferred, BigDecimal minimum) {
+        if (minimum != null && (minimum.signum() < 0 || minimum.compareTo(BigDecimal.valueOf(80)) > 0))
+            throw new IllegalArgumentException("Experience must be between 0 and 80");
+        skills.clear();
+        required.forEach(skill -> skills.add(new JobSkill(skill, JobSkill.Importance.REQUIRED)));
+        preferred.forEach(skill -> skills.add(new JobSkill(skill, JobSkill.Importance.PREFERRED)));
+        minYearsExperience = minimum;
+        // A collection-only change must dirty the parent as well.
+        updatedAt = LocalDateTime.now();
+    }
+
+    JobRequirementsResponse requirements() {
+        return new JobRequirementsResponse(
+                skills.stream().filter(s -> s.importance() == JobSkill.Importance.REQUIRED).map(JobSkill::skill).sorted().toList(),
+                skills.stream().filter(s -> s.importance() == JobSkill.Importance.PREFERRED).map(JobSkill::skill).sorted().toList(),
+                minYearsExperience);
+    }
 
     protected Job() {
     }

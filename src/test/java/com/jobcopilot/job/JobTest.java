@@ -8,6 +8,17 @@ import java.time.LocalDateTime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class JobTest {
+    @Test
+    void requirementsAreDefensiveAndPreserveCoreState() {
+        Job job = new Job("Backend Engineer", "Example", null, null, null, null, null);
+        var required = new java.util.ArrayList<>(java.util.List.of("java"));
+        job.replaceRequirements(required, java.util.List.of(), java.math.BigDecimal.ONE);
+        required.clear();
+        assertEquals(java.util.List.of("java"), job.requirements().requiredSkills());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class, () -> job.requirements().requiredSkills().add("python"));
+        assertEquals(JobStatus.DISCOVERED, job.getStatus());
+        assertEquals("Backend Engineer", job.getTitle());
+    }
 
     @Test
     void replacingDetailsPreservesStatusAndTimestampsUntilJpaLifecycleRuns() {

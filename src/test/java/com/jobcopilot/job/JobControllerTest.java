@@ -33,6 +33,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class JobControllerTest {
+    @Test
+    void rejectsInvalidMatchingRequirements() throws Exception {
+        mockMvc.perform(put("/api/jobs/1/requirements").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requiredSkills\":[\" \"]}")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors['requiredSkills[0]']").value("must not be blank"));
+        mockMvc.perform(put("/api/jobs/1/requirements").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"minYearsExperience\":-1}")).andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/jobs/1/requirements").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"minYearsExperience\":3.123}")).andExpect(status().isBadRequest());
+        verifyNoInteractions(jobService);
+    }
+
+    @Test
+    void requirementsAreASeparateResource() throws Exception {
+        when(jobService.getRequirements(1L)).thenReturn(new com.jobcopilot.job.dto.JobRequirementsResponse(List.of("java"), List.of(), null));
+        mockMvc.perform(get("/api/jobs/1/requirements")).andExpect(status().isOk()).andExpect(jsonPath("$.requiredSkills[0]").value("java"));
+    }
 
     private static final LocalValidatorFactoryBean VALIDATOR = createValidator();
     private static final String VALID_JOB_JSON = """
