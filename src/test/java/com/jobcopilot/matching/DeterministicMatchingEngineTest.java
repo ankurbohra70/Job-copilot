@@ -55,6 +55,15 @@ class DeterministicMatchingEngineTest {
     }
     @ParameterizedTest @CsvSource({"80,STRONG_MATCH","79.99,GOOD_MATCH","65,GOOD_MATCH","64.99,WEAK_MATCH","45,WEAK_MATCH","44.99,NOT_RECOMMENDED"})
     void recommendationBoundaries(String value, Recommendation recommendation) { assertEquals(recommendation,MatchingPolicy.v1().recommendation(new BigDecimal(value))); }
+    @Test void recommendationUsesTheSameRoundedScoreReturnedByTheApi() {
+        var roundingPolicy = new MatchingPolicy("rounding-test", MatchingPolicy.v1().weights(),
+                new BigDecimal("0.79995"), new BigDecimal("79"), new BigDecimal("49"),
+                new BigDecimal("80"), new BigDecimal("65"), new BigDecimal("45"));
+        var result = new DeterministicMatchingEngine(roundingPolicy).match(
+                job(List.of("java"),List.of("python"),null),candidate("Java",null));
+        assertEquals(new BigDecimal("80.00"),result.overallScore());
+        assertEquals(Recommendation.STRONG_MATCH,result.recommendation());
+    }
     @Test void insufficientRequirementsFail() { assertThrows(MatchCannotBeComputedException.class, () -> engine.match(job(List.of(),List.of(),null),candidate("Java",null))); }
     @Test void aliasesAndDuplicatesCannotInflateScore() {
         var result = engine.match(job(List.of("Postgres","postgresql"),List.of("postgres"),null),candidate("Postgres",null));
@@ -74,6 +83,14 @@ class DeterministicMatchingEngineTest {
         assertEquals(r,engine.match(j,c));
         assertEquals(new BigDecimal("100.00"),r.overallScore());
     }
+    @Test void sharedChronologyDoesNotEarnKeywordCredit() {
+        var j = new JobMatchingSnapshot(1L,"Role","Jan Dec",null,
+                new JobRequirementsResponse(List.of("java"),List.of(),null),LocalDateTime.MIN);
+        var r = engine.match(j,candidate("Experience\nPython Developer at Acme\nJan 2020 - Dec 2022",36));
+        assertEquals(Status.NOT_APPLICABLE,r.keywordRelevance().status());
+        assertTrue(r.keywordRelevance().matchedTerms().isEmpty());
+        assertEquals(new BigDecimal("0.00"),r.overallScore());
+    }
     @Test void missingRequiredCapsStrongRawScore() {
         var skills = List.of("java","python","sql","docker","git","aws","redis","react","maven","postgresql");
         var r = engine.match(job(skills,List.of(),"1"),candidate("Java Python SQL Docker Git AWS Redis React Maven",12));
@@ -81,4 +98,3 @@ class DeterministicMatchingEngineTest {
         assertEquals(Recommendation.GOOD_MATCH,r.recommendation());
     }
 }
-
