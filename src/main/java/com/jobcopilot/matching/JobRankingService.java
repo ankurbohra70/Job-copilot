@@ -12,9 +12,11 @@ import com.jobcopilot.resume.CandidateMatchingSnapshot;
 import com.jobcopilot.resume.ResumePersistenceService;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class JobRankingService {
@@ -33,15 +35,15 @@ public class JobRankingService {
         this.engine = engine;
     }
 
-    public JobRankingResponse rank(Long candidateProfileId) {
+    public JobRankingResponse rank(Long candidateProfileId, JobRankingQuery query) {
         CandidateMatchingSnapshot candidate = resumes.matchingSnapshot(candidateProfileId);
-        List<JobRankingSnapshot> snapshots = jobs.rankingSnapshots();
+        List<JobRankingSnapshot> snapshots = jobs.rankingSnapshots(query.statuses());
 
-        List<RankedComputation> ranked = new ArrayList<>();
+        List<RankedComputation> computable = new ArrayList<>();
         List<UnassessedComputation> unassessed = new ArrayList<>();
         for (JobRankingSnapshot snapshot : snapshots) {
             try {
-                ranked.add(new RankedComputation(snapshot, engine.match(snapshot.matching(), candidate)));
+                computable.add(new RankedComputation(snapshot, engine.match(snapshot.matching(), candidate)));
             } catch (MatchCannotBeComputedException exception) {
                 unassessed.add(new UnassessedComputation(snapshot, exception.getMessage()));
             } catch (RuntimeException exception) {
@@ -49,10 +51,17 @@ public class JobRankingService {
             }
         }
 
-        ranked.sort(JobRankingService::compareComputable);
-        List<RankedJobResponse> rankedJobs = new ArrayList<>(ranked.size());
-        for (int index = 0; index < ranked.size(); index++) {
-            RankedComputation computation = ranked.get(index);
+        List<RankedComputation> filtered = new ArrayList<>();
+        for (RankedComputation computation : computable) {
+            if (passesPostMatchFilters(computation.result(), query)) {
+                filtered.add(computation);
+            }
+        }
+
+        filtered.sort(JobRankingService::compareComputable);
+        List<RankedJobResponse> rankedJobs = new ArrayList<>(filtered.size());
+        for (int index = 0; index < filtered.size(); index++) {
+            RankedComputation computation = filtered.get(index);
             rankedJobs.add(new RankedJobResponse(
                     index + 1,
                     RankingJobSummary.from(computation.snapshot()),
@@ -75,9 +84,33 @@ public class JobRankingService {
                 MatchingVocabulary.standard().version(),
                 candidate.parserVersion(),
                 candidate.assessedOn(),
-                rankedJobs,
+                snapshots.size(),
+                computable.size(),
+                filtered.size(),
+                query.page(),
+                query.size(),
+                pageSlice(rankedJobs, query.page(), query.size()),
                 unassessedJobs
         );
+    }
+
+    private static boolean passesPostMatchFilters(MatchResult result, JobRankingQuery query) {
+        BigDecimal minScore = query.minScore();
+        if (minScore != null && result.overallScore().compareTo(minScore) < 0) {
+            return false;
+        }
+        Set<MatchResult.Recommendation> recommendations = query.recommendations();
+        return recommendations.isEmpty() || recommendations.contains(result.recommendation());
+    }
+
+    private static List<RankedJobResponse> pageSlice(List<RankedJobResponse> rankedJobs, int page, int size) {
+        long from = (long) page * (long) size;
+        if (from >= rankedJobs.size()) {
+            return List.of();
+        }
+        int start = (int) from;
+        long endExclusive = Math.min(from + size, rankedJobs.size());
+        return List.copyOf(rankedJobs.subList(start, (int) endExclusive));
     }
 
     private static int compareComputable(RankedComputation left, RankedComputation right) {

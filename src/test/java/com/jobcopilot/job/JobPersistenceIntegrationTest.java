@@ -23,6 +23,7 @@ import org.hibernate.stat.Statistics;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -173,7 +174,7 @@ class JobPersistenceIntegrationTest {
         statistics.clear();
         List<JobRankingSnapshot> snapshots;
         try {
-            snapshots = jobService.rankingSnapshots();
+            snapshots = jobService.rankingSnapshots(Set.of(JobStatus.DISCOVERED, JobStatus.REJECTED));
             assertEquals(1, statistics.getPrepareStatementCount());
         } finally {
             statistics.setStatisticsEnabled(false);
@@ -191,6 +192,13 @@ class JobPersistenceIntegrationTest {
         assertEquals(jobService.matchingSnapshot(empty.id()).requirements(), snapshots.stream()
                 .filter(item -> item.matching().id().equals(empty.id())).findFirst().orElseThrow().matching().requirements());
         assertTrue(snapshots.stream().anyMatch(item -> item.matching().id().equals(second.id())));
+
+        List<JobRankingSnapshot> rejectedOnly = jobService.rankingSnapshots(Set.of(JobStatus.REJECTED));
+        assertEquals(List.of(first.id()), rejectedOnly.stream().map(item -> item.matching().id()).toList());
+        assertTrue(jobService.rankingSnapshots(Set.of(JobStatus.OFFER)).isEmpty());
+        JobPageResponse listing = jobService.getJobs(0, 2, "id,asc", null, null);
+        assertEquals(2, listing.content().size());
+        assertEquals(3, listing.totalElements());
     }
 
     private JobPageResponse search(String searchTerm, JobStatus status) {

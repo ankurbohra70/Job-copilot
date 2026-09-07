@@ -22,7 +22,7 @@ Schema changes are applied with Flyway. Hibernate `ddl-auto` is `validate` only.
 
 ## Current scope
 
-Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching. JC-004A adds on-demand multi-job ranking for a stored candidate profile.
+Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching. JC-004A adds on-demand multi-job ranking for a stored candidate profile. JC-004B productizes that ranking with default status eligibility, explicit status override, score/recommendation filters, and paginated ranked results.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -37,7 +37,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/resumes` | Upload a text-based PDF resume |
 | `GET` | `/api/resumes/{id}` | Retrieve resume metadata and linked profile |
 | `GET` | `/api/candidate-profiles/{id}` | Retrieve the extracted candidate profile |
-| `GET` | `/api/candidate-profiles/{id}/job-rankings` | Rank all stored jobs for that profile (not persisted) |
+| `GET` | `/api/candidate-profiles/{id}/job-rankings` | Rank status-eligible jobs for that profile (not persisted) |
 | `POST` | `/api/matches` | Compute an explainable match (not persisted) |
 
 Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
@@ -368,31 +368,51 @@ A job with no skills and no positive `minYearsExperience` cannot be scored (`422
 
 ## Multi-job ranking
 
-`GET /api/candidate-profiles/{candidateProfileId}/job-rankings` ranks every stored job against one candidate profile. Rankings are computed on demand and are not persisted.
+`GET /api/candidate-profiles/{candidateProfileId}/job-rankings` ranks status-eligible jobs against one candidate profile. Rankings are computed on demand and are not persisted. `DeterministicMatchingEngine` remains the only scoring and recommendation authority; this endpoint filters, globally ranks, and paginates those results.
 
-JC-004A includes jobs in **every** current `JobStatus`, including `APPLIED`, `REJECTED`, and `WITHDRAWN`. Status is returned on each row so clients can see it. Status eligibility, filters, and pagination belong to a later milestone (JC-004B), not this endpoint.
+With no `status` parameter, ranking evaluates exactly `DISCOVERED`, `SHORTLISTED`, `APPLIED`, and `INTERVIEWING`. `OFFER`, `REJECTED`, and `WITHDRAWN` are excluded by default. Explicit `status` values completely override that default (they are not intersected with it). Repeated query parameters are the contract (`?status=DISCOVERED&status=APPLIED`); comma-separated lists are not.
+
+Optional query parameters:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `status` | `DISCOVERED`, `SHORTLISTED`, `APPLIED`, `INTERVIEWING` | Repeatable. Blank or unknown values are `400`. Duplicates are ignored. |
+| `minScore` | omitted (no score filter) | Inclusive `0`–`100`. Compared with `BigDecimal.compareTo`. Blank, malformed, out of range, or repeated → `400`. |
+| `recommendation` | omitted (no recommendation filter) | Repeatable. Values are OR'd. Combined with `minScore` using AND. Blank or unknown → `400`. |
+| `page` | `0` | Zero-based. Must be `>= 0`. Repeated → `400`. |
+| `size` | `20` | `1`–`100`. Repeated → `400`. |
 
 Windows PowerShell:
 
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://localhost:8080/api/candidate-profiles/1/job-rankings"
+Invoke-RestMethod -Method Get -Uri "http://localhost:8080/api/candidate-profiles/1/job-rankings?minScore=65&page=0&size=20"
 ```
 
 ```bash
-curl -i http://localhost:8080/api/candidate-profiles/1/job-rankings
+curl -i "http://localhost:8080/api/candidate-profiles/1/job-rankings"
+curl -i "http://localhost:8080/api/candidate-profiles/1/job-rankings?status=OFFER"
 ```
 
-Computable jobs are ranked by:
+All status-eligible jobs are loaded and matched before pagination. Computable jobs remaining after `minScore` and `recommendation` filters are ranked by:
 
 1. `overallScore` descending (`BigDecimal.compareTo`)
 2. `createdAt` descending
 3. `jobId` descending
 
-Ranks are contiguous and one-based (`1, 2, 3, ...`). Recommendation is not a sort key. `updatedAt` is not a tie-breaker.
+Ranks are one-based positions in the complete filtered list and continue across pages (`page=0` has ranks `1–size`). Recommendation and status are not sort keys. `updatedAt` is not a tie-breaker. A page past the last page returns `200` with an empty `rankedJobs` array and accurate pagination metadata. If there are zero filtered ranked jobs, `totalPages` is `0`; `page=0` is both `first` and `last`.
 
-A job that cannot be scored with the existing engine (no skills and no positive `minYearsExperience`) is **unassessed**, not a bad match. Unassessed jobs have no score, recommendation, or rank. They are returned in `unassessedJobs` with reason `INSUFFICIENT_JOB_REQUIREMENTS`. They are ordered by `createdAt` descending, then `jobId` descending.
+A job that cannot be scored with the existing engine (no skills and no positive `minYearsExperience`) is **unassessed**, not a bad match. Unassessed jobs have no score, recommendation, or rank. They are returned in the complete `unassessedJobs` list for the resolved statuses (not paginated with ranked jobs, and not affected by `minScore` or `recommendation`) with reason `INSUFFICIENT_JOB_REQUIREMENTS`. They are ordered by `createdAt` descending, then `jobId` descending.
 
-`evaluatedJobCount` equals `rankedJobCount + unassessedJobCount`. An empty job store returns `200` with empty arrays and zero counts. A missing candidate profile returns the existing `404` contract and does not scan jobs. An unexpected matching failure fails the whole request with a generic `500`; it does not return a partial ranking.
+Count fields:
+
+- `evaluatedJobCount` = status-eligible jobs passed to the engine
+- `computableJobCount` = jobs that produced a `MatchResult` before post-score filters
+- `unassessedJobCount` = jobs that produced `MatchCannotBeComputedException` (`== unassessedJobs.size()`)
+- `filteredJobCount` = computable jobs remaining after `minScore`/`recommendation` filters, before pagination
+- `pageResultCount` = `rankedJobs.size()` on the current page
+
+`evaluatedJobCount` equals `computableJobCount + unassessedJobCount`. An empty eligible set returns `200` with empty arrays and zero counts. A missing candidate profile returns the existing `404` contract and does not scan jobs. An unexpected matching failure fails the whole request with a generic `500`; it does not return a partial ranking.
 
 Each ranked row copies score, recommendation, skill lists, experience comparison, caps, strengths, gaps, warnings, and unassessed factors from the same `DeterministicMatchingEngine` result used by `POST /api/matches`. Category breakdown and role/keyword relevance objects are omitted from the ranking summary; they remain on the single-match API.
 

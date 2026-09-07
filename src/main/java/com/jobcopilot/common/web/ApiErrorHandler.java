@@ -2,6 +2,7 @@ package com.jobcopilot.common.web;
 
 import com.jobcopilot.job.InvalidJobQueryException;
 import com.jobcopilot.job.JobNotFoundException;
+import com.jobcopilot.matching.InvalidJobRankingQueryException;
 import com.jobcopilot.matching.JobRankingComputationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,8 +94,8 @@ public class ApiErrorHandler {
         ));
     }
 
-    @ExceptionHandler(InvalidJobQueryException.class)
-    public ResponseEntity<ApiErrorResponse> handleInvalidJobQuery(InvalidJobQueryException exception) {
+    @ExceptionHandler({InvalidJobQueryException.class, InvalidJobRankingQueryException.class})
+    public ResponseEntity<ApiErrorResponse> handleInvalidJobQuery(RuntimeException exception) {
         return badRequest(exception.getMessage());
     }
 

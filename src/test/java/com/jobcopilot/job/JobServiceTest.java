@@ -17,6 +17,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -302,11 +303,11 @@ class JobServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void rankingSnapshotsUseTheBulkPathAndEmptyDatabaseIsEmpty() {
-        when(jobRepository.findAllWithSkillsForRanking()).thenReturn(List.of());
+        when(jobRepository.findAllWithSkillsForRanking(any())).thenReturn(List.of());
 
-        assertTrue(jobService.rankingSnapshots().isEmpty());
+        assertTrue(jobService.rankingSnapshots(Set.of(JobStatus.DISCOVERED, JobStatus.SHORTLISTED)).isEmpty());
 
-        verify(jobRepository).findAllWithSkillsForRanking();
+        verify(jobRepository).findAllWithSkillsForRanking(Set.of(JobStatus.DISCOVERED, JobStatus.SHORTLISTED));
         verify(jobRepository, never()).findById(any());
         verify(jobRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
@@ -315,10 +316,10 @@ class JobServiceTest {
     void rankingSnapshotsCopyPresentationMetadataAndMatchingRequirements() {
         Job rejected = persistedJob(8L, JobStatus.REJECTED);
         rejected.replaceRequirements(List.of("java"), List.of("docker"), new java.math.BigDecimal("3"));
-        when(jobRepository.findAllWithSkillsForRanking()).thenReturn(List.of(rejected));
+        when(jobRepository.findAllWithSkillsForRanking(any())).thenReturn(List.of(rejected));
         when(jobRepository.findById(8L)).thenReturn(Optional.of(rejected));
 
-        var snapshots = jobService.rankingSnapshots();
+        var snapshots = jobService.rankingSnapshots(Set.of(JobStatus.REJECTED));
         var snapshot = snapshots.getFirst();
         var matching = jobService.matchingSnapshot(8L);
 
@@ -334,7 +335,7 @@ class JobServiceTest {
         assertEquals(matching, snapshot.matching());
         assertEquals(List.of("java"), snapshot.matching().requirements().requiredSkills());
         assertEquals(List.of("docker"), snapshot.matching().requirements().preferredSkills());
-        verify(jobRepository).findAllWithSkillsForRanking();
+        verify(jobRepository).findAllWithSkillsForRanking(Set.of(JobStatus.REJECTED));
     }
 
     private static CreateJobRequest createRequest() {

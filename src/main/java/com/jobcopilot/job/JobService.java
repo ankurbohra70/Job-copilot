@@ -50,8 +50,8 @@ public class JobService {
     }
 
     @Transactional(readOnly = true)
-    public List<JobRankingSnapshot> rankingSnapshots() {
-        return jobRepository.findAllWithSkillsForRanking().stream()
+    public List<JobRankingSnapshot> rankingSnapshots(Set<JobStatus> statuses) {
+        return jobRepository.findAllWithSkillsForRanking(statuses).stream()
                 .map(JobService::toRankingSnapshot)
                 .toList();
     }
