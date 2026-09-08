@@ -30,8 +30,13 @@ public class DeterministicMatchingEngine {
         if (!hasSkills && !hasExperience) throw new MatchCannotBeComputedException();
         // Evidence is resolved once. The same sets drive both score and explanations.
         Set<String> recognized = new TreeSet<>(canonical(candidate.profile().skills()));
-        List<String> requiredMatched = required.stream().filter(s -> recognized.contains(s) || vocabulary.hasSkill(candidate.extractedText(), s)).toList();
-        List<String> preferredMatched = preferred.stream().filter(s -> recognized.contains(s) || vocabulary.hasSkill(candidate.extractedText(), s)).toList();
+        Set<String> textSkills = new HashSet<>(vocabulary.skills(candidate.extractedText()));
+        List<String> requiredMatched = required.stream()
+                .filter(s -> recognized.contains(s) || textSkills.contains(s) || (!vocabulary.isKnownSkill(s) && vocabulary.contains(candidate.extractedText(), s)))
+                .toList();
+        List<String> preferredMatched = preferred.stream()
+                .filter(s -> recognized.contains(s) || textSkills.contains(s) || (!vocabulary.isKnownSkill(s) && vocabulary.contains(candidate.extractedText(), s)))
+                .toList();
         List<String> missing = required.stream().filter(s -> !requiredMatched.contains(s)).toList();
         List<String> unmatched = preferred.stream().filter(s -> !preferredMatched.contains(s)).toList();
         Map<Category, BigDecimal> scores = new EnumMap<>(Category.class);

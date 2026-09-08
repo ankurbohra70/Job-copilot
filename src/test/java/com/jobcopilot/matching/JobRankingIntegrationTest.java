@@ -258,6 +258,163 @@ class JobRankingIntegrationTest {
     }
 
     @Test
+    void extractingStoredDescriptionMakesAnUnassessedJobComputableForMatchingAndRanking() {
+        Long profileId = saveProfile("""
+                Experience
+                Backend Engineer at Acme
+                2020-01 - 2023-01
+                - Java Spring Boot services
+                Skills
+                Java, Spring Boot
+                """);
+        var created = jobService.createJob(new CreateJobRequest(
+                "Backend Engineer",
+                "Acme",
+                "Remote",
+                "https://example.com/jobs/extract-rank",
+                """
+                Requirements:
+                Java
+                Redis
+                Minimum 1 year of experience
+                """,
+                "TESTCONTAINERS",
+                "extract-rank"
+        ));
+
+        var before = rank(profileId);
+        assertEquals(List.of(created.id()), before.unassessedJobs().stream().map(item -> item.job().id()).toList());
+        assertEquals(0, before.computableJobCount());
+        assertThrows(MatchCannotBeComputedException.class,
+                () -> matchService.match(new MatchRequest(profileId, created.id())));
+
+        var extracted = jobService.extractRequirements(created.id());
+        assertEquals(List.of("java", "redis"), extracted.requiredSkills());
+        assertEquals(0, extracted.minYearsExperience().compareTo(new BigDecimal("1")));
+
+        MatchResponse single = matchService.match(new MatchRequest(profileId, created.id()));
+        var after = rank(profileId);
+        var ranked = after.rankedJobs().stream().filter(item -> item.job().id().equals(created.id())).findFirst().orElseThrow();
+
+        assertEquals(1, after.computableJobCount());
+        assertEquals(0, after.unassessedJobCount());
+        assertEquals(single.overallScore(), ranked.match().overallScore());
+        assertEquals(single.recommendation(), ranked.match().recommendation());
+        assertEquals(single.matchedRequiredSkills(), ranked.match().matchedRequiredSkills());
+        assertCountInvariants(after);
+    }
+
+    @Test
+    void extractedSpringBootMatchesManualSpringBootForMatchingAndRanking() {
+        Long profileId = saveProfile("""
+                Experience
+                Backend Engineer at Acme
+                2020-01 - 2023-01
+                - Spring Boot services
+                Skills
+                Spring Boot
+                """);
+        String description = "Required: Spring Boot";
+        var manual = jobService.createJob(new CreateJobRequest(
+                "Manual Spring", "Acme", "Remote", "https://example.com/jobs/spring-manual",
+                description, "TESTCONTAINERS", "spring-manual"));
+        var extractedJob = jobService.createJob(new CreateJobRequest(
+                "Extracted Spring", "Acme", "Remote", "https://example.com/jobs/spring-extract",
+                description, "TESTCONTAINERS", "spring-extract"));
+        jobService.replaceRequirements(manual.id(), new JobRequirementsRequest(List.of("spring-boot"), List.of(), null));
+        var extracted = jobService.extractRequirements(extractedJob.id());
+
+        assertEquals(List.of("spring-boot"), extracted.requiredSkills());
+        assertEquals(List.of(), extracted.preferredSkills());
+        assertEquals(jobService.getRequirements(manual.id()).requiredSkills(), extracted.requiredSkills());
+        assertEquals(jobService.getRequirements(manual.id()).preferredSkills(), extracted.preferredSkills());
+
+        MatchResponse manualMatch = matchService.match(new MatchRequest(profileId, manual.id()));
+        MatchResponse extractedMatch = matchService.match(new MatchRequest(profileId, extractedJob.id()));
+        assertEquals(manualMatch.overallScore(), extractedMatch.overallScore());
+        assertEquals(manualMatch.recommendation(), extractedMatch.recommendation());
+        assertEquals(manualMatch.matchedRequiredSkills(), extractedMatch.matchedRequiredSkills());
+        assertEquals(manualMatch.missingRequiredSkills(), extractedMatch.missingRequiredSkills());
+
+        var ranking = rank(profileId);
+        var manualRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(manual.id())).findFirst().orElseThrow();
+        var extractedRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(extractedJob.id())).findFirst().orElseThrow();
+        assertEquals(manualRanked.match().overallScore(), extractedRanked.match().overallScore());
+        assertEquals(manualRanked.match().recommendation(), extractedRanked.match().recommendation());
+        assertCountInvariants(ranking);
+    }
+
+    @Test
+    void springBootCandidateDoesNotSatisfySpringFrameworkRequirementInRanking() {
+        Long profileId = saveProfile("""
+                Experience
+                Backend Engineer at Acme
+                2020-01 - 2023-01
+                - Spring Boot services
+                Skills
+                Spring Boot
+                """);
+        Long springJob = job(profileId, "Spring Framework Role", "spring-fw", JobStatus.DISCOVERED,
+                List.of("spring"), List.of(), null);
+        Long bootJob = job(profileId, "Spring Boot Role", "spring-boot-role", JobStatus.DISCOVERED,
+                List.of("spring-boot"), List.of(), null);
+
+        MatchResponse springMatch = matchService.match(new MatchRequest(profileId, springJob));
+        MatchResponse bootMatch = matchService.match(new MatchRequest(profileId, bootJob));
+        assertEquals(List.of("spring"), springMatch.missingRequiredSkills());
+        assertTrue(springMatch.matchedRequiredSkills().isEmpty());
+        assertEquals(List.of("spring-boot"), bootMatch.matchedRequiredSkills());
+
+        var ranking = rank(profileId);
+        var springRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(springJob)).findFirst().orElseThrow();
+        var bootRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(bootJob)).findFirst().orElseThrow();
+        assertEquals(springMatch.overallScore(), springRanked.match().overallScore());
+        assertEquals(bootMatch.overallScore(), bootRanked.match().overallScore());
+        assertTrue(bootMatch.overallScore().compareTo(springMatch.overallScore()) > 0);
+        assertCountInvariants(ranking);
+    }
+
+    @Test
+    void manualAndExtractedExperienceProduceTheSameMatchAndRanking() {
+        Long profileId = saveProfile("""
+                Experience
+                Backend Engineer at Acme
+                2020-01 - 2023-01
+                - Java services
+                Skills
+                Java
+                """);
+        String description = """
+                Requirements:
+                Java
+                2 years of experience
+                """;
+        var extractedJob = jobService.createJob(new CreateJobRequest(
+                "Extracted Exp", "Acme", "Remote", "https://example.com/jobs/exp-extract",
+                description, "TESTCONTAINERS", "exp-extract"));
+        var manualJob = jobService.createJob(new CreateJobRequest(
+                "Manual Exp", "Acme", "Remote", "https://example.com/jobs/exp-manual",
+                description, "TESTCONTAINERS", "exp-manual"));
+        var extracted = jobService.extractRequirements(extractedJob.id());
+        var manual = jobService.replaceRequirements(manualJob.id(), new JobRequirementsRequest(
+                List.of("java"), List.of(), new BigDecimal("2")));
+        assertEquals(manual, extracted);
+
+        MatchResponse extractedMatch = matchService.match(new MatchRequest(profileId, extractedJob.id()));
+        MatchResponse manualMatch = matchService.match(new MatchRequest(profileId, manualJob.id()));
+        assertEquals(manualMatch.overallScore(), extractedMatch.overallScore());
+        assertEquals(manualMatch.recommendation(), extractedMatch.recommendation());
+        assertEquals(manualMatch.experienceComparison().requiredYears(), extractedMatch.experienceComparison().requiredYears());
+
+        var ranking = rank(profileId);
+        var extractedRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(extractedJob.id())).findFirst().orElseThrow();
+        var manualRanked = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(manualJob.id())).findFirst().orElseThrow();
+        assertEquals(manualRanked.match().overallScore(), extractedRanked.match().overallScore());
+        assertEquals(manualRanked.match().recommendation(), extractedRanked.match().recommendation());
+        assertCountInvariants(ranking);
+    }
+
+    @Test
     void globalRankingIgnoresInsertOrderAndPaginatesContinuously() {
         Long profileId = saveProfile("Java");
         Long lowFirst = job(profileId, "Low", "low", JobStatus.DISCOVERED, List.of("Java", "Redis"), List.of(), null);
@@ -295,6 +452,34 @@ class JobRankingIntegrationTest {
 
     private JobRankingResponse rank(Long profileId) {
         return rank(profileId, JobRankingQuery.parse(null, null, null, null, null));
+    }
+
+    @Test void threeManualExtractionPairsHaveIdenticalMatchingAndRanking() {
+        Long profileId = saveProfile("Experience\nBackend Engineer at Acme\n2020-01 - 2023-01\nSkills\nJava Spring Boot Redis Docker");
+        String[] descriptions = {"Required: Spring Boot\nPreferred: Redis\nMinimum 2 years",
+                "Required: Java and Redis\nPreferred: Docker", "Minimum 3 years"};
+        var required = List.of(List.of("spring-boot"), List.of("java", "redis"), List.<String>of());
+        var preferred = List.of(List.of("redis"), List.of("docker"), List.<String>of());
+        for (int index = 0; index < descriptions.length; index++) {
+            var a = jobService.createJob(new CreateJobRequest("Role", "Acme", null, null, descriptions[index], "TEST", "pair-manual-" + index));
+            var b = jobService.createJob(new CreateJobRequest("Role", "Acme", null, null, descriptions[index], "TEST", "pair-extracted-" + index));
+            BigDecimal minimum = index == 1 ? null : new BigDecimal(index == 0 ? "2.00" : "3.00");
+            var manual = jobService.replaceRequirements(a.id(), new JobRequirementsRequest(required.get(index), preferred.get(index), minimum));
+            assertEquals(manual, jobService.extractRequirements(b.id()));
+            assertEquals(jobService.getRequirements(a.id()), jobService.getRequirements(b.id()));
+            var manualMatch = matchService.match(new MatchRequest(profileId, a.id()));
+            var extractedMatch = matchService.match(new MatchRequest(profileId, b.id()));
+            assertEquals(manualMatch.overallScore(), extractedMatch.overallScore());
+            assertEquals(manualMatch.recommendation(), extractedMatch.recommendation());
+            var ranking = rank(profileId);
+            var ra = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(a.id())).findFirst().orElseThrow();
+            var rb = ranking.rankedJobs().stream().filter(item -> item.job().id().equals(b.id())).findFirst().orElseThrow();
+            assertEquals(ra.match(), rb.match());
+            assertEquals(manualMatch.overallScore(), ra.match().overallScore());
+            assertTrue(rb.rank() < ra.rank(), "equal scores retain the existing newer-job-first tie break");
+            assertCountInvariants(ranking);
+            System.out.println("Manual/extracted pair " + index + ": " + manualMatch.overallScore() + " " + manualMatch.recommendation());
+        }
     }
 
     private JobRankingResponse rank(Long profileId, JobRankingQuery query) {

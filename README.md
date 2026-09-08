@@ -339,6 +339,46 @@ curl -i -X PUT http://localhost:8080/api/jobs/1/requirements \
   -d '{"requiredSkills":["Java","Spring Boot","PostgreSQL","Redis"],"preferredSkills":["Docker","AWS"],"minYearsExperience":1}'
 ```
 
+Manual `PUT /api/jobs/{id}/requirements` remains available and is not replaced by extraction. There is no provenance flag: a later successful extraction overwrites intervening manual edits.
+
+## Automatic job requirement extraction
+
+`POST /api/jobs/{id}/requirements/extract` reads the **stored** job description and deterministically fills the existing requirements resource. The request has no body; the description is not sent by the client.
+
+Extraction is rule-based. It is not an LLM, embedding, or semantic-inference step. Skills are recognized only when they match the versioned `matching-vocabulary.json` aliases and boundary rules. Unknown technologies are ignored.
+
+Skill context:
+
+- Clear required headings or inline markers (`required`, `requirements`, `required skills`, `must have`, `minimum qualifications`, and similar) classify matching skills as required.
+- Clear preferred headings or inline markers (`preferred`, `preferred qualifications`, `nice to have`, `good to have`, `bonus`) classify matching skills as preferred.
+- A recognized skill with no required/preferred evidence defaults to **preferred**, because required skills participate in hard matching score caps.
+- If the same canonical skill appears as both, required wins. Stored required and preferred lists are canonical, unique, sorted, and disjoint.
+- Section context does not leak through an unrelated heading such as `Responsibilities`.
+
+Experience:
+
+- Conservative numeric forms such as `2+ years`, `3 years of experience`, `minimum 2 years`, `at least 1 year`, `2.5 years`, `2-4 years`, and `3 to 5 years` are recognized.
+- Ranges store the **lower bound**.
+- Multiple valid minima store the greatest lower bound.
+- Preferred-only experience is not stored as the mandatory minimum.
+- Vague wording, word numbers, `up to`, `or` alternatives, and reversed ranges are ignored rather than guessed.
+
+Successful extraction **fully replaces** the stored requirements. It does not merge with previous values.
+
+Failed extraction (`422`) does not mutate existing requirements. Blank/null descriptions, no recognized skills and no valid positive experience, and parseable but domain-invalid minima (outside 0–80) all fail this way.
+
+Repeating extraction when the semantic result is unchanged does not rewrite `job_skills` or advance `updatedAt`.
+
+Windows PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/jobs/1/requirements/extract"
+```
+
+```bash
+curl -i -X POST http://localhost:8080/api/jobs/1/requirements/extract
+```
+
 ## Matching
 
 `POST /api/matches` computes a score from a stored candidate profile and job. The result is not persisted.

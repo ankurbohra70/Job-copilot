@@ -2,6 +2,7 @@ package com.jobcopilot.common.web;
 
 import com.jobcopilot.job.InvalidJobQueryException;
 import com.jobcopilot.job.JobNotFoundException;
+import com.jobcopilot.job.JobRequirementExtractionException;
 import com.jobcopilot.matching.InvalidJobRankingQueryException;
 import com.jobcopilot.matching.JobRankingComputationException;
 import org.slf4j.Logger;
@@ -35,6 +36,11 @@ public class ApiErrorHandler {
     @ExceptionHandler(com.jobcopilot.job.InvalidJobRequirementsException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidRequirements(com.jobcopilot.job.InvalidJobRequirementsException exception) {
         return badRequest(exception.getMessage());
+    }
+
+    @ExceptionHandler(JobRequirementExtractionException.class)
+    public ResponseEntity<ApiErrorResponse> handleRequirementExtraction(JobRequirementExtractionException exception) {
+        return error(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
     @ExceptionHandler(com.jobcopilot.matching.MatchCannotBeComputedException.class)
     public ResponseEntity<ApiErrorResponse> handleCannotMatch(com.jobcopilot.matching.MatchCannotBeComputedException exception) {

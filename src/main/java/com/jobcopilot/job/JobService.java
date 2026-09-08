@@ -13,6 +13,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Set;
 import java.util.List;
@@ -31,6 +32,7 @@ public class JobService {
     );
 
     private final JobRepository jobRepository;
+    private final JobRequirementExtractor extractor;
 
     @Transactional(readOnly = true)
     public JobRequirementsResponse getRequirements(Long id) { return findJob(id).requirements(); }
@@ -41,6 +43,32 @@ public class JobService {
         List<String> required = normalizedSkills(request.requiredSkills());
         List<String> preferred = normalizedSkills(request.preferredSkills()).stream().filter(s -> !required.contains(s)).toList();
         job.replaceRequirements(required, preferred, request.minYearsExperience());
+        return jobRepository.saveAndFlush(job).requirements();
+    }
+
+    @Transactional
+    public JobRequirementsResponse extractRequirements(Long id) {
+        Job job = findJob(id);
+        String description = job.getDescription();
+        if (description == null || description.isBlank()) {
+            throw new JobRequirementExtractionException("Job description must be non-blank to extract requirements");
+        }
+        JobRequirementExtractor.Extraction extracted = extractor.extract(description);
+        List<String> required = normalizedSkills(extracted.requiredSkills());
+        List<String> preferred = normalizedSkills(extracted.preferredSkills()).stream()
+                .filter(skill -> !required.contains(skill))
+                .toList();
+        BigDecimal minimum = extracted.minYearsExperience();
+        try {
+            Job.validateExperience(minimum);
+        } catch (IllegalArgumentException invalid) {
+            throw new JobRequirementExtractionException(invalid.getMessage());
+        }
+        JobRequirementsResponse current = job.requirements();
+        if (semanticallySame(current, required, preferred, minimum)) {
+            return current;
+        }
+        job.replaceRequirements(required, preferred, minimum);
         return jobRepository.saveAndFlush(job).requirements();
     }
 
@@ -64,8 +92,27 @@ public class JobService {
         }).distinct().sorted().toList();
     }
 
-    JobService(JobRepository jobRepository) {
+    private static boolean semanticallySame(
+            JobRequirementsResponse current,
+            List<String> required,
+            List<String> preferred,
+            BigDecimal minimum
+    ) {
+        return current.requiredSkills().equals(required)
+                && current.preferredSkills().equals(preferred)
+                && sameMinimum(current.minYearsExperience(), minimum);
+    }
+
+    private static boolean sameMinimum(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null) {
+            return left == right;
+        }
+        return left.compareTo(right) == 0;
+    }
+
+    JobService(JobRepository jobRepository, JobRequirementExtractor extractor) {
         this.jobRepository = jobRepository;
+        this.extractor = extractor;
     }
 
     @Transactional

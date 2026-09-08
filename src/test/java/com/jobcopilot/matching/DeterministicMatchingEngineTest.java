@@ -12,6 +12,35 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.jobcopilot.matching.MatchResult.*;
 
 class DeterministicMatchingEngineTest {
+    @Test void everyVocabularyAliasMatchesThroughRawTextAndStoredSkillsIndependently() throws Exception {
+        var vocabulary = com.jobcopilot.common.text.MatchingVocabulary.standard();
+        try (var input = getClass().getResourceAsStream("/matching-vocabulary.json")) {
+            var definition = tools.jackson.databind.json.JsonMapper.builder().build().readValue(input,
+                    com.jobcopilot.common.text.MatchingVocabulary.Definition.class);
+            for (var entry : definition.skills().entrySet()) for (String alias : entry.getValue()) {
+                var empty = candidate("", null);
+                var rawOnly = new CandidateMatchingSnapshot(2L, empty.profile(), alias, "rules-v1", "v1", empty.assessedOn());
+                assertEquals(List.of(entry.getKey()), engine.match(job(List.of(entry.getKey()), List.of(), null), rawOnly).matchedRequiredSkills(), alias);
+                var parsed = candidate(alias, null);
+                var storedOnly = new CandidateMatchingSnapshot(2L, parsed.profile(), "", "rules-v1", "v1", parsed.assessedOn());
+                assertEquals(List.of(entry.getKey()), engine.match(job(List.of(entry.getKey()), List.of(), null), storedOnly).matchedRequiredSkills(), alias);
+                assertTrue(vocabulary.hasSkill(alias, entry.getKey()));
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {"Spring Boot|spring|false", "Spring Boot|spring-boot|true",
+            "Spring Framework|spring|true", "Spring Framework and Spring Boot|spring|true",
+            "Spring Framework and Spring Boot|spring-boot|true", "JavaScript|java|false",
+            "Experience using custom-tool in production|custom-tool|true", "custom-tool|tool|true"})
+    void rawEvidenceBoundariesAndCustomFallbackRemainStable(String text, String skill, boolean matches) {
+        var empty = candidate("", null);
+        var raw = new CandidateMatchingSnapshot(2L, empty.profile(), text, "rules-v1", "v1", empty.assessedOn());
+        var result = engine.match(job(List.of(skill), List.of(), null), raw);
+        assertEquals(matches ? List.of(skill) : List.of(), result.matchedRequiredSkills());
+        assertEquals(matches ? List.of() : List.of(skill), result.missingRequiredSkills());
+    }
     private final DeterministicMatchingEngine engine = new DeterministicMatchingEngine();
     private JobMatchingSnapshot job(List<String> required, List<String> preferred, String minimum) {
         return new JobMatchingSnapshot(1L, "Role", null, null,
@@ -91,6 +120,18 @@ class DeterministicMatchingEngineTest {
         assertTrue(r.keywordRelevance().matchedTerms().isEmpty());
         assertEquals(new BigDecimal("0.00"),r.overallScore());
     }
+    @Test void springBootRawTextDoesNotSatisfySpringFrameworkRequirement() {
+        var springBootOnly = candidate("Spring Boot", null);
+        var both = candidate("Spring Framework and Spring Boot", null);
+        var springJob = job(List.of("spring"), List.of(), null);
+        var bootJob = job(List.of("spring-boot"), List.of(), null);
+        assertEquals(List.of("spring"), engine.match(springJob, springBootOnly).missingRequiredSkills());
+        assertTrue(engine.match(springJob, springBootOnly).matchedRequiredSkills().isEmpty());
+        assertEquals(List.of("spring"), engine.match(springJob, both).matchedRequiredSkills());
+        assertEquals(List.of("spring-boot"), engine.match(bootJob, springBootOnly).matchedRequiredSkills());
+        assertEquals(List.of("spring-boot"), engine.match(bootJob, both).matchedRequiredSkills());
+    }
+
     @Test void missingRequiredCapsStrongRawScore() {
         var skills = List.of("java","python","sql","docker","git","aws","redis","react","maven","postgresql");
         var r = engine.match(job(skills,List.of(),"1"),candidate("Java Python SQL Docker Git AWS Redis React Maven",12));

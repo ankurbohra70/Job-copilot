@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.annotation.DirtiesContext;
@@ -23,11 +24,14 @@ import org.hibernate.stat.Statistics;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
@@ -70,6 +74,9 @@ class JobPersistenceIntegrationTest {
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void clearDatabase() {
@@ -201,8 +208,149 @@ class JobPersistenceIntegrationTest {
         assertEquals(3, listing.totalElements());
     }
 
+    @Test
+    void extractionPersistsImportanceExperienceAndIsIdempotentUntilDescriptionChanges() {
+        JobResponse created = jobService.createJob(requestWithDescription(
+                "Extractor Role",
+                "Acme",
+                "extract-1",
+                """
+                Requirements:
+                Java
+                Redis
+                2 years of experience
+
+                Preferred:
+                Docker
+                """
+        ));
+        JobResponse before = jobService.getJob(created.id());
+        var extracted = jobService.extractRequirements(created.id());
+
+        assertEquals(List.of("java", "redis"), extracted.requiredSkills());
+        assertEquals(List.of("docker"), extracted.preferredSkills());
+        assertEquals(0, extracted.minYearsExperience().compareTo(new java.math.BigDecimal("2")));
+        assertEquals(List.of(
+                Map.of("skill", "docker", "importance", "PREFERRED"),
+                Map.of("skill", "java", "importance", "REQUIRED"),
+                Map.of("skill", "redis", "importance", "REQUIRED")
+        ), jdbcTemplate.queryForList(
+                "select skill, importance from job_skills where job_id = ? order by skill", created.id()));
+        JobResponse afterExtract = jobService.getJob(created.id());
+        assertTrue(afterExtract.updatedAt().isAfter(before.updatedAt()));
+        assertEquals(before.createdAt(), afterExtract.createdAt());
+        assertEquals(JobStatus.DISCOVERED, afterExtract.status());
+        assertEquals(before.description(), afterExtract.description());
+        assertEquals(before.title(), afterExtract.title());
+        assertEquals(before.company(), afterExtract.company());
+
+        var repeated = jobService.extractRequirements(created.id());
+        JobResponse afterRepeat = jobService.getJob(created.id());
+        assertEquals(extracted.requiredSkills(), repeated.requiredSkills());
+        assertEquals(extracted.preferredSkills(), repeated.preferredSkills());
+        assertEquals(0, extracted.minYearsExperience().compareTo(repeated.minYearsExperience()));
+        assertEquals(afterExtract.updatedAt(), afterRepeat.updatedAt());
+        assertEquals(afterExtract.createdAt(), afterRepeat.createdAt());
+
+        JobResponse afterUnusableDescription = jobService.updateJob(created.id(), new UpdateJobRequest(
+                created.title(),
+                created.company(),
+                created.location(),
+                created.jobUrl(),
+                "A friendly workplace with no technologies listed.",
+                created.source(),
+                created.externalJobId()
+        ));
+        Long jobId = afterUnusableDescription.id();
+        assertThrows(JobRequirementExtractionException.class, () -> jobService.extractRequirements(jobId));
+        assertEquals(extracted.requiredSkills(), jobService.getRequirements(jobId).requiredSkills());
+        assertEquals(extracted.preferredSkills(), jobService.getRequirements(jobId).preferredSkills());
+        assertEquals(0, extracted.minYearsExperience().compareTo(jobService.getRequirements(jobId).minYearsExperience()));
+
+        jobService.updateJob(jobId, new UpdateJobRequest(
+                afterUnusableDescription.title(),
+                afterUnusableDescription.company(),
+                afterUnusableDescription.location(),
+                afterUnusableDescription.jobUrl(),
+                """
+                Nice to have:
+                AWS
+                """,
+                afterUnusableDescription.source(),
+                afterUnusableDescription.externalJobId()
+        ));
+        var replaced = jobService.extractRequirements(jobId);
+        assertTrue(replaced.requiredSkills().isEmpty());
+        assertEquals(List.of("aws"), replaced.preferredSkills());
+        assertNull(replaced.minYearsExperience());
+        assertEquals(List.of("aws"), jobService.getRequirements(jobId).preferredSkills());
+        assertTrue(jobService.getJob(created.id()).updatedAt().isAfter(afterRepeat.updatedAt()));
+    }
+
+    @Test
+    void manualAndExtractedExperienceAreStructurallyEquivalent() {
+        JobResponse created = jobService.createJob(requestWithDescription(
+                "Equiv Role",
+                "Acme",
+                "equiv-1",
+                """
+                Requirements:
+                Java
+                2 years of experience
+                """
+        ));
+        var extracted = jobService.extractRequirements(created.id());
+        JobResponse manualJob = jobService.createJob(request("Equiv Manual", "Acme", "equiv-2"));
+        var manual = jobService.replaceRequirements(manualJob.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(
+                List.of("java"), List.of(), new java.math.BigDecimal("2")));
+        assertEquals(new java.math.BigDecimal("2.00"), extracted.minYearsExperience());
+        assertEquals(new java.math.BigDecimal("2.00"), manual.minYearsExperience());
+        assertEquals(manual, extracted);
+        assertEquals(manual, jobService.getRequirements(created.id()));
+        assertEquals(extracted, jobService.getRequirements(manualJob.id()));
+    }
+
     private JobPageResponse search(String searchTerm, JobStatus status) {
         return jobService.getJobs(0, 20, "id,asc", searchTerm, status);
+    }
+
+    @Test
+    void invalidExtractionReturns422AndPreservesStoredRequirementsAndTimestamp() throws Exception {
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new JobController(jobService))
+                .setControllerAdvice(new com.jobcopilot.common.web.ApiErrorHandler()).build();
+        for (String number : List.of("80.001", "80.004", "-2", "100", "2.345")) {
+            var created = jobService.createJob(requestWithDescription("Role", "Company", "invalid-" + number,
+                    "Required: Java\nMinimum " + number + " years experience"));
+            jobService.replaceRequirements(created.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(
+                    List.of("redis"), List.of("docker"), new java.math.BigDecimal("3.00")));
+            var before = jobService.getRequirements(created.id());
+            var updatedAt = jobService.getJob(created.id()).updatedAt();
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                    "/api/jobs/" + created.id() + "/requirements/extract"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnprocessableEntity());
+            assertEquals(before, jobService.getRequirements(created.id()));
+            assertEquals(updatedAt, jobService.getJob(created.id()).updatedAt());
+            assertEquals(new java.math.BigDecimal("3.00"), jdbcTemplate.queryForObject(
+                    "select min_years_experience from jobs where id=?", java.math.BigDecimal.class, created.id()));
+            assertEquals(List.of(Map.of("skill", "docker", "importance", "PREFERRED"),
+                    Map.of("skill", "redis", "importance", "REQUIRED")), jdbcTemplate.queryForList(
+                    "select skill,importance from job_skills where job_id=? order by skill", created.id()));
+        }
+    }
+
+    @Test void decimalManualAndExtractedNoOpsPreserveStoredTimestamp() {
+        for (String number : List.of("2.00", "2.5")) {
+            var created = jobService.createJob(requestWithDescription("Role", "Company", "decimal-" + number,
+                    "Required: Java\nMinimum " + number + " years experience"));
+            var manual = jobService.replaceRequirements(created.id(), new com.jobcopilot.job.dto.JobRequirementsRequest(
+                    List.of("java"), List.of(), new java.math.BigDecimal(number)));
+            var before = jobService.getJob(created.id());
+            assertEquals(manual, jobService.extractRequirements(created.id()));
+            assertEquals(manual, jobService.extractRequirements(created.id()));
+            assertEquals(before.updatedAt(), jobService.getJob(created.id()).updatedAt());
+            assertEquals(new java.math.BigDecimal(number).setScale(2), jdbcTemplate.queryForObject(
+                    "select min_years_experience from jobs where id=?", java.math.BigDecimal.class, created.id()));
+        }
     }
 
     private static List<Long> ids(JobPageResponse page) {
@@ -210,12 +358,21 @@ class JobPersistenceIntegrationTest {
     }
 
     private static CreateJobRequest request(String title, String company, String externalJobId) {
+        return requestWithDescription(title, company, externalJobId, "Integration test record");
+    }
+
+    private static CreateJobRequest requestWithDescription(
+            String title,
+            String company,
+            String externalJobId,
+            String description
+    ) {
         return new CreateJobRequest(
                 title,
                 company,
                 "Remote",
                 "https://example.com/jobs/" + externalJobId,
-                "Integration test record",
+                description,
                 "TESTCONTAINERS",
                 externalJobId
         );

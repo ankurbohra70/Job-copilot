@@ -35,6 +35,11 @@ public class JobController {
         return jobService.replaceRequirements(id, request);
     }
 
+    @PostMapping("/{id}/requirements/extract")
+    public JobRequirementsResponse extractRequirements(@PathVariable Long id) {
+        return jobService.extractRequirements(id);
+    }
+
     public JobController(JobService jobService) {
         this.jobService = jobService;
     }

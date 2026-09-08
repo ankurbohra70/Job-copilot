@@ -51,6 +51,64 @@ class JobControllerTest {
         mockMvc.perform(get("/api/jobs/1/requirements")).andExpect(status().isOk()).andExpect(jsonPath("$.requiredSkills[0]").value("java"));
     }
 
+    @Test
+    void extractRequirementsReturnsExistingResponseShape() throws Exception {
+        when(jobService.extractRequirements(1L)).thenReturn(new com.jobcopilot.job.dto.JobRequirementsResponse(
+                List.of("java", "spring-boot"), List.of("aws", "docker"), java.math.BigDecimal.valueOf(2)));
+
+        mockMvc.perform(post("/api/jobs/1/requirements/extract"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requiredSkills[0]").value("java"))
+                .andExpect(jsonPath("$.requiredSkills[1]").value("spring-boot"))
+                .andExpect(jsonPath("$.preferredSkills[0]").value("aws"))
+                .andExpect(jsonPath("$.preferredSkills[1]").value("docker"))
+                .andExpect(jsonPath("$.minYearsExperience").value(2));
+
+        verify(jobService).extractRequirements(1L);
+    }
+
+    @Test
+    void extractRequirementsDoesNotRequireABody() throws Exception {
+        when(jobService.extractRequirements(1L)).thenReturn(new com.jobcopilot.job.dto.JobRequirementsResponse(
+                List.of("java"), List.of(), null));
+
+        mockMvc.perform(post("/api/jobs/1/requirements/extract").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+
+        verify(jobService).extractRequirements(1L);
+    }
+
+    @Test
+    void extractRequirementsForMissingJobReturnsNotFound() throws Exception {
+        when(jobService.extractRequirements(99L)).thenThrow(new JobNotFoundException(99L));
+
+        mockMvc.perform(post("/api/jobs/99/requirements/extract"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Job 99 was not found"));
+    }
+
+    @Test
+    void extractRequirementsRejectsNonNumericJobId() throws Exception {
+        mockMvc.perform(post("/api/jobs/not-a-number/requirements/extract"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value for id"));
+
+        verifyNoInteractions(jobService);
+    }
+
+    @Test
+    void extractRequirementsReturnsUnprocessableEntity() throws Exception {
+        when(jobService.extractRequirements(1L)).thenThrow(
+                new JobRequirementExtractionException("No recognized job requirements could be extracted from the job description"));
+
+        mockMvc.perform(post("/api/jobs/1/requirements/extract"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(jsonPath("$.error").value("Unprocessable Entity"))
+                .andExpect(jsonPath("$.message").value(
+                        "No recognized job requirements could be extracted from the job description"));
+    }
+
     private static final LocalValidatorFactoryBean VALIDATOR = createValidator();
     private static final String VALID_JOB_JSON = """
             {

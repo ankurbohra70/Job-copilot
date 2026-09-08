@@ -3,13 +3,18 @@ package com.jobcopilot.common.text;
 import tools.jackson.databind.json.JsonMapper;
 import java.text.Normalizer;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class MatchingVocabulary {
     public record Definition(String version, Map<String,List<String>> skills, Map<String,List<String>> roles, List<String> stopwords) {}
     private static final MatchingVocabulary STANDARD = load();
     private final Definition definition;
-    private MatchingVocabulary(Definition definition) { this.definition = definition; }
+    private final List<SkillPhrase> skillPhrases;
+    private MatchingVocabulary(Definition definition) {
+        this.definition = definition;
+        this.skillPhrases = phrases(definition);
+    }
     public static MatchingVocabulary standard() { return STANDARD; }
     private static MatchingVocabulary load() {
         try (var input = MatchingVocabulary.class.getResourceAsStream("/matching-vocabulary.json")) {
@@ -29,15 +34,20 @@ public final class MatchingVocabulary {
                 .map(Map.Entry::getKey).findFirst().orElse(normalized);
     }
     public boolean contains(String text, String phrase) {
-        return Pattern.compile("(?<![\\p{L}\\p{N}_+#.])" + Pattern.quote(normalize(phrase)) + "(?![\\p{L}\\p{N}_+#])")
-                .matcher(normalize(text)).find();
+        return phrasePattern(normalize(phrase)).matcher(normalize(text)).find();
     }
     public boolean hasSkill(String text, String skill) {
         String canonical = canonical(skill);
-        return contains(text, canonical) || definition.skills().getOrDefault(canonical, List.of()).stream().anyMatch(a -> contains(text, a));
+        if (definition.skills().containsKey(canonical)) {
+            return resolvedSkills(text).contains(canonical);
+        }
+        return contains(text, canonical);
     }
     public List<String> skills(String text) {
-        return definition.skills().keySet().stream().filter(s -> hasSkill(text, s)).sorted().toList();
+        return List.copyOf(resolvedSkills(text));
+    }
+    public boolean isKnownSkill(String skill) {
+        return definition.skills().containsKey(canonical(skill));
     }
     public List<String> roles(String text) {
         return definition.roles().entrySet().stream().filter(e -> e.getValue().stream().anyMatch(a -> contains(text, a)))
@@ -55,5 +65,83 @@ public final class MatchingVocabulary {
         return Pattern.compile("[\\p{L}][\\p{L}\\p{N}]{2,}").matcher(normalized).results()
                 .map(m -> m.group()).filter(t -> !definition.stopwords().contains(t)).distinct().sorted().toList();
     }
-}
 
+    private Set<String> resolvedSkills(String text) {
+        Set<String> detected = new TreeSet<>();
+        for (SkillSpan span : skillSpans(text)) detected.add(span.canonical());
+        return detected;
+    }
+
+    /** Offsets refer to normalize(text), not the original string. */
+    public List<SkillSpan> skillSpans(String text) {
+        String normalized = normalize(text);
+        List<SkillSpan> spans = new ArrayList<>();
+        for (SkillPhrase phrase : skillPhrases) {
+            Matcher matcher = phrase.pattern().matcher(normalized);
+            while (matcher.find()) {
+                spans.add(new SkillSpan(phrase.canonical(), matcher.start(), matcher.end()));
+            }
+        }
+        return resolveSpans(spans).spans();
+    }
+
+    // The work count permits deterministic complexity regression tests without timing thresholds.
+    static Resolution resolveSpans(List<SkillSpan> input) {
+        List<SkillSpan> spans = new ArrayList<>(input);
+        spans.sort(Comparator.comparingInt(SkillSpan::start)
+                .thenComparing(Comparator.comparingInt(SkillSpan::length).reversed()));
+        List<SkillSpan> accepted = new ArrayList<>();
+        List<SkillSpan> active = new ArrayList<>();
+        long comparisons = 0;
+        for (SkillSpan span : spans) {
+            for (var iterator = active.iterator(); iterator.hasNext();) {
+                comparisons++;
+                if (iterator.next().end() <= span.start()) iterator.remove();
+            }
+            boolean subsumed = false;
+            for (SkillSpan other : active) {
+                comparisons++;
+                if (!other.canonical().equals(span.canonical())
+                        && other.start() <= span.start() && other.end() >= span.end()
+                        && other.length() > span.length()) {
+                    subsumed = true;
+                    break;
+                }
+            }
+            if (!subsumed) {
+                accepted.add(span);
+                active.add(span);
+            }
+        }
+        return new Resolution(List.copyOf(accepted), comparisons);
+    }
+    record Resolution(List<SkillSpan> spans, long comparisons) {}
+
+    private static List<SkillPhrase> phrases(Definition definition) {
+        List<SkillPhrase> phrases = new ArrayList<>();
+        definition.skills().forEach((canonical, aliases) -> {
+            LinkedHashSet<String> terms = new LinkedHashSet<>();
+            terms.add(canonical);
+            terms.addAll(aliases);
+            for (String term : terms) {
+                String normalized = normalize(term);
+                if (!normalized.isEmpty()) {
+                    phrases.add(new SkillPhrase(canonical, phrasePattern(normalized)));
+                }
+            }
+        });
+        return List.copyOf(phrases);
+    }
+
+    private static Pattern phrasePattern(String normalizedPhrase) {
+        return Pattern.compile("(?<![\\p{L}\\p{N}_+#.])" + Pattern.quote(normalizedPhrase) + "(?![\\p{L}\\p{N}_+#])");
+    }
+
+    private record SkillPhrase(String canonical, Pattern pattern) {}
+
+    public record SkillSpan(String canonical, int start, int end) {
+        int length() {
+            return end - start;
+        }
+    }
+}

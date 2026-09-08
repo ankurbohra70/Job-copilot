@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.CollectionTable;
@@ -66,12 +67,11 @@ class Job {
     private Set<JobSkill> skills = new HashSet<>();
 
     void replaceRequirements(List<String> required, List<String> preferred, BigDecimal minimum) {
-        if (minimum != null && (minimum.signum() < 0 || minimum.compareTo(BigDecimal.valueOf(80)) > 0))
-            throw new IllegalArgumentException("Experience must be between 0 and 80");
+        BigDecimal normalized = canonicalExperience(minimum);
         skills.clear();
         required.forEach(skill -> skills.add(new JobSkill(skill, JobSkill.Importance.REQUIRED)));
         preferred.forEach(skill -> skills.add(new JobSkill(skill, JobSkill.Importance.PREFERRED)));
-        minYearsExperience = minimum;
+        minYearsExperience = normalized;
         // A collection-only change must dirty the parent as well.
         updatedAt = LocalDateTime.now();
     }
@@ -180,5 +180,21 @@ class Job {
 
     void changeStatus(JobStatus status) {
         this.status = status;
+    }
+
+    static BigDecimal canonicalExperience(BigDecimal minimum) {
+        if (minimum == null) {
+            return null;
+        }
+        validateExperience(minimum);
+        return minimum.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    static void validateExperience(BigDecimal minimum) {
+        if (minimum == null) return;
+        if (minimum.signum() < 0 || minimum.compareTo(BigDecimal.valueOf(80)) > 0)
+            throw new IllegalArgumentException("Experience must be between 0 and 80");
+        if (minimum.scale() > 2)
+            throw new IllegalArgumentException("Experience must have at most two decimal places");
     }
 }

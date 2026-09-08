@@ -14,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class JobServiceTest {
@@ -68,7 +70,7 @@ class JobServiceTest {
     @BeforeEach
     void setUp() {
         jobRepository = mock(JobRepository.class);
-        jobService = new JobService(jobRepository);
+        jobService = new JobService(jobRepository, new JobRequirementExtractor());
     }
 
     @Test
@@ -336,6 +338,142 @@ class JobServiceTest {
         assertEquals(List.of("java"), snapshot.matching().requirements().requiredSkills());
         assertEquals(List.of("docker"), snapshot.matching().requirements().preferredSkills());
         verify(jobRepository).findAllWithSkillsForRanking(Set.of(JobStatus.REJECTED));
+    }
+
+    @Test
+    void extractRequirementsDoesNotInvokeExtractorWhenJobIsMissing() {
+        JobRequirementExtractor extractor = mock(JobRequirementExtractor.class);
+        JobService service = new JobService(jobRepository, extractor);
+        when(jobRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(JobNotFoundException.class, () -> service.extractRequirements(99L));
+
+        verifyNoInteractions(extractor);
+        verify(jobRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void extractRequirementsRejectsBlankAndNullDescriptionsWithoutMutating() {
+        Job existing = persistedJob(7L, JobStatus.DISCOVERED);
+        existing.replaceRequirements(List.of("java"), List.of("redis"), new BigDecimal("2"));
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+
+        ReflectionTestUtils.setField(existing, "description", "   ");
+        assertEquals(
+                "Job description must be non-blank to extract requirements",
+                assertThrows(JobRequirementExtractionException.class, () -> jobService.extractRequirements(7L)).getMessage());
+        ReflectionTestUtils.setField(existing, "description", null);
+        assertThrows(JobRequirementExtractionException.class, () -> jobService.extractRequirements(7L));
+
+        assertEquals(List.of("java"), existing.requirements().requiredSkills());
+        assertEquals(List.of("redis"), existing.requirements().preferredSkills());
+        assertEquals(0, existing.requirements().minYearsExperience().compareTo(new BigDecimal("2")));
+        verify(jobRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void failedExtractionPreservesExistingRequirements() {
+        Job existing = persistedJob(7L, JobStatus.APPLIED);
+        existing.replaceRequirements(List.of("java", "spring-boot"), List.of("redis"), new BigDecimal("2"));
+        LocalDateTime updatedAt = existing.getUpdatedAt();
+        ReflectionTestUtils.setField(existing, "description", "A friendly workplace with no technologies listed.");
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+
+        assertThrows(JobRequirementExtractionException.class, () -> jobService.extractRequirements(7L));
+
+        assertEquals(List.of("java", "spring-boot"), existing.requirements().requiredSkills());
+        assertEquals(List.of("redis"), existing.requirements().preferredSkills());
+        assertEquals(0, existing.requirements().minYearsExperience().compareTo(new BigDecimal("2")));
+        assertEquals(updatedAt, existing.getUpdatedAt());
+        verify(jobRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void extractRequirementsCanPersistSkillsOnlyAndExperienceOnly() {
+        Job existing = persistedJob(7L, JobStatus.DISCOVERED);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+        when(jobRepository.saveAndFlush(any(Job.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ReflectionTestUtils.setField(existing, "description", "Required: Java and Redis");
+        var skillsOnly = jobService.extractRequirements(7L);
+        assertEquals(List.of("java", "redis"), skillsOnly.requiredSkills());
+        assertTrue(skillsOnly.preferredSkills().isEmpty());
+        assertEquals(null, skillsOnly.minYearsExperience());
+
+        ReflectionTestUtils.setField(existing, "description", "Minimum 3 years of experience");
+        var experienceOnly = jobService.extractRequirements(7L);
+        assertTrue(experienceOnly.requiredSkills().isEmpty());
+        assertTrue(experienceOnly.preferredSkills().isEmpty());
+        assertEquals(0, experienceOnly.minYearsExperience().compareTo(new BigDecimal("3")));
+    }
+
+    @Test
+    void successfulExtractionFullyReplacesManualRequirementsAndKeepsListsDisjoint() {
+        Job existing = persistedJob(7L, JobStatus.SHORTLISTED);
+        existing.replaceRequirements(List.of("java"), List.of("aws"), new BigDecimal("3"));
+        ReflectionTestUtils.setField(existing, "description", """
+                Requirements:
+                Redis
+                Preferred:
+                Docker
+                """);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+        when(jobRepository.saveAndFlush(any(Job.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = jobService.extractRequirements(7L);
+
+        assertEquals(List.of("redis"), response.requiredSkills());
+        assertEquals(List.of("docker"), response.preferredSkills());
+        assertEquals(null, response.minYearsExperience());
+        verify(jobRepository).saveAndFlush(existing);
+    }
+
+    @Test
+    void identicalExtractionIsASemanticNoOpEvenWhenBigDecimalScaleDiffers() {
+        Job existing = persistedJob(7L, JobStatus.DISCOVERED);
+        existing.replaceRequirements(List.of("java"), List.of("docker"), new BigDecimal("2.00"));
+        LocalDateTime updatedAt = existing.getUpdatedAt();
+        ReflectionTestUtils.setField(existing, "description", """
+                Requirements:
+                Java
+                2 years of experience
+
+                Preferred:
+                Docker
+                """);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(existing));
+
+        var response = jobService.extractRequirements(7L);
+
+        assertEquals(List.of("java"), response.requiredSkills());
+        assertEquals(List.of("docker"), response.preferredSkills());
+        assertEquals(0, response.minYearsExperience().compareTo(new BigDecimal("2")));
+        assertEquals(updatedAt, existing.getUpdatedAt());
+        verify(jobRepository, never()).saveAndFlush(any());
+        verify(jobRepository, never()).save(any());
+    }
+
+    @Test
+    void manualAndExtractedExperienceShareCanonicalScale() {
+        Job manual = persistedJob(7L, JobStatus.DISCOVERED);
+        when(jobRepository.findById(7L)).thenReturn(Optional.of(manual));
+        when(jobRepository.saveAndFlush(any(Job.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var put = jobService.replaceRequirements(7L, new com.jobcopilot.job.dto.JobRequirementsRequest(
+                List.of("java"), List.of("docker"), new BigDecimal("2")));
+        Job extractedJob = persistedJob(8L, JobStatus.DISCOVERED);
+        ReflectionTestUtils.setField(extractedJob, "description", """
+                Requirements:
+                Java
+                2 years of experience
+
+                Preferred:
+                Docker
+                """);
+        when(jobRepository.findById(8L)).thenReturn(Optional.of(extractedJob));
+        var extracted = jobService.extractRequirements(8L);
+        assertEquals(new BigDecimal("2.00"), put.minYearsExperience());
+        assertEquals(put, extracted);
+        assertEquals(put.minYearsExperience(), extracted.minYearsExperience());
     }
 
     private static CreateJobRequest createRequest() {
