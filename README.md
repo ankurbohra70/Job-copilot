@@ -2,7 +2,7 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The backend currently covers job management plus JC-003 resume extraction and explainable matching:
+The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
@@ -22,7 +22,7 @@ Schema changes are applied with Flyway. Hibernate `ddl-auto` is `validate` only.
 
 ## Current scope
 
-Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching. JC-004A adds on-demand multi-job ranking for a stored candidate profile. JC-004B productizes that ranking with default status eligibility, explicit status override, score/recommendation filters, and paginated ranked results.
+Job APIs still support creation, retrieval, replacement, status changes, deletion, pagination, sorting, title/company search, and status filtering. JC-003 adds job matching requirements, PDF resume upload, candidate profiles, and on-demand matching. JC-004A adds on-demand multi-job ranking for a stored candidate profile. JC-004B productizes that ranking with default status eligibility, explicit status override, score/recommendation filters, and paginated ranked results. JC-006 adds an explicit job-scoped assessment endpoint; `POST /api/matches` remains a compatibility entry point into the same single-job orchestration.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -38,7 +38,8 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `GET` | `/api/resumes/{id}` | Retrieve resume metadata and linked profile |
 | `GET` | `/api/candidate-profiles/{id}` | Retrieve the extracted candidate profile |
 | `GET` | `/api/candidate-profiles/{id}/job-rankings` | Rank status-eligible jobs for that profile (not persisted) |
-| `POST` | `/api/matches` | Compute an explainable match (not persisted) |
+| `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
+| `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
 Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
 
@@ -381,7 +382,50 @@ curl -i -X POST http://localhost:8080/api/jobs/1/requirements/extract
 
 ## Matching
 
-`POST /api/matches` computes a score from a stored candidate profile and job. The result is not persisted.
+Product flow:
+
+1. Upload a resume and note the returned `candidateProfileId`.
+2. Create or import a job.
+3. Explicitly set or extract job requirements. Assessment does **not** extract requirements.
+4. Assess one job:
+
+`POST /api/jobs/{jobId}/assessment`
+
+5. Rank jobs with the same explicit `candidateProfileId`. Ranking remains a separate bulk, on-demand computation.
+
+Candidate selection is always explicit. Uploading another resume does not change what an existing `candidateProfileId` means. There is no active, current, or latest profile pointer.
+
+Assessment is computed on demand from stored authoritative inputs (complete job and candidate matching snapshots). Results are **not** persisted: there is no assessment id, table, cache, history, or current-assessment field on the job.
+
+`POST /api/matches` remains supported and delegates to the same single-job orchestration.
+
+```powershell
+$assessment = @{ candidateProfileId = 1 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/jobs/1/assessment" -ContentType "application/json" -Body $assessment
+```
+
+```bash
+curl -i -X POST http://localhost:8080/api/jobs/1/assessment \
+  -H "Content-Type: application/json" \
+  -d '{"candidateProfileId":1}'
+```
+
+```json
+{
+  "candidateProfileId": 1,
+  "jobId": 1,
+  "algorithmVersion": "deterministic-v1",
+  "overallScore": 80.00,
+  "recommendation": "STRONG_MATCH",
+  "matchedRequiredSkills": ["java"],
+  "missingRequiredSkills": [],
+  "matchedPreferredSkills": [],
+  "unmatchedPreferredSkills": [],
+  "experienceComparison": { "status": "NOT_APPLICABLE" }
+}
+```
+
+The compatibility endpoint:
 
 ```powershell
 $match = @{ candidateProfileId = 1; jobId = 1 } | ConvertTo-Json
@@ -454,7 +498,7 @@ Count fields:
 
 `evaluatedJobCount` equals `computableJobCount + unassessedJobCount`. An empty eligible set returns `200` with empty arrays and zero counts. A missing candidate profile returns the existing `404` contract and does not scan jobs. An unexpected matching failure fails the whole request with a generic `500`; it does not return a partial ranking.
 
-Each ranked row copies score, recommendation, skill lists, experience comparison, caps, strengths, gaps, warnings, and unassessed factors from the same `DeterministicMatchingEngine` result used by `POST /api/matches`. Category breakdown and role/keyword relevance objects are omitted from the ranking summary; they remain on the single-match API.
+Each ranked row copies score, recommendation, skill lists, experience comparison, caps, strengths, gaps, warnings, and unassessed factors from the same `DeterministicMatchingEngine` result used by `POST /api/jobs/{jobId}/assessment` and `POST /api/matches`. Category breakdown and role/keyword relevance objects are omitted from the ranking summary; they remain on the single-job assessment API. Invoking assessment does not change ranking eligibility, order, ranks, filters, pagination, or counts.
 
 ## Configuration
 

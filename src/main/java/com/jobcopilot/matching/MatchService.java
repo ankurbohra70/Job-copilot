@@ -1,25 +1,18 @@
 package com.jobcopilot.matching;
 
-import com.jobcopilot.common.text.MatchingVocabulary;
-import com.jobcopilot.job.JobService;
-import com.jobcopilot.resume.ResumePersistenceService;
-import com.jobcopilot.matching.dto.*;
+import com.jobcopilot.matching.dto.MatchRequest;
+import com.jobcopilot.matching.dto.MatchResponse;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MatchService {
-    private final JobService jobs;
-    private final ResumePersistenceService resumes;
-    private final DeterministicMatchingEngine engine;
-    public MatchService(JobService jobs, ResumePersistenceService resumes, DeterministicMatchingEngine engine) {
-        this.jobs = jobs; this.resumes = resumes; this.engine = engine;
+    private final JobAssessmentService assessments;
+
+    public MatchService(JobAssessmentService assessments) {
+        this.assessments = assessments;
     }
+
     public MatchResponse match(MatchRequest request) {
-        var job = jobs.matchingSnapshot(request.jobId());
-        var profile = resumes.matchingSnapshot(request.candidateProfileId());
-        var result = engine.match(job, profile);
-        return MatchResponse.from(profile.id(), job.id(), engine.version(), MatchingVocabulary.standard().version(),
-                profile.parserVersion(), profile.assessedOn(), job.updatedAt(), result);
+        return assessments.assess(request.jobId(), request.candidateProfileId());
     }
 }
-

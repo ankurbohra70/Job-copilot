@@ -7,6 +7,7 @@ import com.jobcopilot.job.dto.CreateJobRequest;
 import com.jobcopilot.job.dto.JobPageResponse;
 import com.jobcopilot.job.dto.JobRequirementsRequest;
 import com.jobcopilot.job.dto.UpdateJobStatusRequest;
+import com.jobcopilot.common.web.ApiErrorHandler;
 import com.jobcopilot.matching.dto.JobRankingResponse;
 import com.jobcopilot.matching.dto.MatchRequest;
 import com.jobcopilot.matching.dto.MatchResponse;
@@ -21,9 +22,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -38,6 +43,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @Testcontainers
@@ -56,6 +63,7 @@ class JobRankingIntegrationTest {
 
     @Autowired JobRankingService rankingService;
     @Autowired MatchService matchService;
+    @Autowired JobAssessmentService assessmentService;
     @Autowired JobService jobService;
     @Autowired ResumePersistenceService resumes;
     @Autowired JdbcTemplate jdbc;
@@ -434,6 +442,62 @@ class JobRankingIntegrationTest {
         assertEquals(3, beyond.filteredJobCount());
         assertCountInvariants(page0);
         assertCountInvariants(beyond);
+    }
+
+    @Test
+    void assessmentSharesEngineScoresAndDoesNotChangeRanking() throws Exception {
+        Long profileId = saveProfile("""
+                Experience
+                Backend Engineer at Acme
+                2020-01 - 2023-01
+                Skills
+                Java
+                """);
+        Long computable = job(profileId, "Backend Engineer", "rank-assess", JobStatus.DISCOVERED, List.of("Java"), List.of(), null);
+        Long unassessed = job(profileId, "Blank Role", "rank-blank", JobStatus.DISCOVERED, List.of(), List.of(), null);
+        Long excluded = job(profileId, "Offer Role", "rank-offer", JobStatus.OFFER, List.of("Java"), List.of(), null);
+        job(profileId, "Other Role", "rank-other", JobStatus.APPLIED, List.of("Redis"), List.of(), null);
+        var queries = List.of(
+                JobRankingQuery.parse(null, null, null, List.of("0"), List.of("1")),
+                JobRankingQuery.parse(null, null, null, List.of("1"), List.of("1")),
+                JobRankingQuery.parse(null, List.of("STRONG_MATCH"), List.of("80"), List.of("0"), List.of("1")),
+                JobRankingQuery.parse(List.of("OFFER"), null, null, null, null));
+        var queryResultsBefore = queries.stream().map(query -> rank(profileId, query)).toList();
+
+        var before = rank(profileId);
+        var validator = new LocalValidatorFactoryBean();
+        validator.afterPropertiesSet();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new JobAssessmentController(assessmentService))
+                .setControllerAdvice(new ApiErrorHandler())
+                .setValidator(validator)
+                .build();
+        mvc.perform(post("/api/jobs/" + computable + "/assessment")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"candidateProfileId\":" + profileId + "}"))
+                .andExpect(status().isOk());
+        validator.close();
+
+        MatchResponse assessment = assessmentService.assess(computable, profileId);
+        var after = rank(profileId);
+        var ranked = after.rankedJobs().stream().filter(item -> item.job().id().equals(computable)).findFirst().orElseThrow();
+
+        assertEquals(before, after);
+        assertEquals(queryResultsBefore, queries.stream().map(query -> rank(profileId, query)).toList());
+        assertEquals(assessment.overallScore(), ranked.match().overallScore());
+        assertEquals(assessment.recommendation(), ranked.match().recommendation());
+        assertEquals(assessment.matchedRequiredSkills(), ranked.match().matchedRequiredSkills());
+        assertEquals(assessment.missingRequiredSkills(), ranked.match().missingRequiredSkills());
+        assertEquals(assessment.matchedPreferredSkills(), ranked.match().matchedPreferredSkills());
+        assertEquals(assessment.unmatchedPreferredSkills(), ranked.match().unmatchedPreferredSkills());
+        assertEquals(assessment.experienceComparison(), ranked.match().experienceComparison());
+        assertEquals(assessment.appliedCaps(), ranked.match().appliedCaps());
+        assertEquals(assessment.strengths(), ranked.match().strengths());
+        assertEquals(assessment.gaps(), ranked.match().gaps());
+        assertEquals(assessment.warnings(), ranked.match().warnings());
+        assertEquals(assessment.unassessedFactors(), ranked.match().unassessedFactors());
+        assertEquals(List.of(unassessed), after.unassessedJobs().stream().map(item -> item.job().id()).toList());
+        assertTrue(after.rankedJobs().stream().noneMatch(item -> item.job().id().equals(excluded)));
+        assertCountInvariants(after);
     }
 
     @Test
