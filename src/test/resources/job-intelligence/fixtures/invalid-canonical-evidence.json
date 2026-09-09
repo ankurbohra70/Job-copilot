@@ -1,0 +1,29 @@
+{
+  "facts": {
+    "skills": [
+      {
+        "name": "Java",
+        "importance": "REQUIRED",
+        "evidenceIds": [
+          "e1"
+        ]
+      }
+    ],
+    "experienceClauses": [],
+    "qualifications": []
+  },
+  "interpretations": {
+    "roleFamily": null,
+    "seniority": null,
+    "responsibilities": [],
+    "technicalConcepts": []
+  },
+  "evidence": [
+    {
+      "id": "e1",
+      "source": "CANONICAL_REQUIREMENTS",
+      "quote": "Java"
+    }
+  ],
+  "uncertainties": []
+}

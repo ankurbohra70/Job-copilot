@@ -500,6 +500,178 @@ Count fields:
 
 Each ranked row copies score, recommendation, skill lists, experience comparison, caps, strengths, gaps, warnings, and unassessed factors from the same `DeterministicMatchingEngine` result used by `POST /api/jobs/{jobId}/assessment` and `POST /api/matches`. Category breakdown and role/keyword relevance objects are omitted from the ranking summary; they remain on the single-job assessment API. Invoking assessment does not change ranking eligibility, order, ranks, filters, pagination, or counts.
 
+## JC-007 Phase 1 contracts (shadow analysis foundation)
+
+Phase 1 adds job-side contracts, versioned prompts and a shared output schema only. It adds no API,
+provider client, execution orchestration, validation algorithms, or persistence. Existing extraction,
+assessment, matching, ranking, and candidate behavior remain unchanged.
+
+`JobIntelligencePrompt.LlmFirstInput` contains exactly raw `title` and `description`.
+`HybridInput` adds captured current canonical requirements, including empty or manually corrected
+values. Project the existing matching snapshot explicitly into these records; never serialize the
+snapshot as model input. Neither input accepts an independent JC-005 baseline.
+
+`JobExtractionBaseline` calls the existing extractor without persistence. Expected extraction inability
+becomes `UNAVAILABLE / EXTRACTION_UNAVAILABLE`; unexpected defects propagate. Baseline capture may
+happen before or after model execution, but never feeds prompt construction or acts as a readiness gate.
+
+Both strategies share the `job-intelligence-output-v1` schema. Prompt labels are `llm-first-v1` and
+`hybrid-enrichment-v1`. Each effective identity appends `:sha256:` and the SHA-256 of the exact UTF-8
+assembled instructions or schema text. Resource changes therefore cannot retain the same effective
+identity; intentional contract revisions still advance the readable version label.
+
+`JobIntelligenceModel.ModelInput` is a sealed read-only interface. Its sole final implementation is
+owned by `JobIntelligencePrompt`, with a private constructor and no accessible factory. Only `assemble`
+creates requests; application callers, including package peers, cannot supply replacement serialized
+strategy data, instructions, schema, or version identities. The private payload preserves full-request
+value equality for isolation checks.
+
+Generation settings contain only nullable `Double temperature` (null means omit) and
+`int maxOutputTokens`. No maps, arbitrary metadata, headers, hints, or callbacks enter this contract.
+Provider-specific configuration and operational settings validation remain deferred.
+
+Provider `Output` is an untrusted candidate contract, distinct from accepted `JobIntelligence`.
+Java-derived `minimumExperience` is absent from provider output. Evidence sources are only `TITLE`
+and `DESCRIPTION`; canonical context is never evidence. Later validation must enforce grounding,
+cross-field consistency (including experience units/ranges), normalization and derivation before acceptance.
+Phase 1 records and schema do not claim semantic validation or acceptance.
+
+Focused verification: `./mvnw -Dtest=JobIntelligenceContractTest,JobIntelligencePromptTest,JobIntelligenceIsolationTest,JobIntelligenceRequestBoundaryTest,JobExtractionBaselineTest test`
+(use `mvnw.cmd` on Windows). Normal verification makes no live model calls.
+
+## JC-007 Phase 2 (in-memory acceptance pipeline)
+
+Phase 2 adds a provider-independent in-memory runner. It does not add HTTP clients, provider adapters,
+retries, persistence, APIs, evaluation, candidate-side intelligence, or matching/ranking changes.
+
+Flow: `StrategyInput` → `JobIntelligencePrompt.assemble` → one `JobIntelligenceModel.analyze` attempt →
+strict local JSON decode → deterministic grounding → minimal copy/exact-decimal normalization →
+Java-only `minimumExperience` → terminal `Accepted` or `Failed`.
+
+Provider `COMPLETED` never implies acceptance. JC-005 baseline is not a runner argument.
+
+### Execution
+
+Timeout is a monotonic deadline covering queued and running provider time. The attempt is cancelled on
+timeout; a late completion cannot replace the timeout failure. Interruption preserves the interrupt flag.
+Exceptions crossing the provider boundary become `INVOCATION_EXCEPTION`. JVM `Error`s are not caught.
+Validator/programming defects are `VALIDATOR_DEFECT`, not provider failures. There are no retries.
+
+QA correction: default execution uses one process-owned daemon pool shared across runners, capped at four
+workers and sixteen queued tasks, with idle worker expiry after thirty seconds. Saturation yields
+`EXECUTION_UNAVAILABLE`; expired queued tasks are cancelled and removed. Adapters ignoring interruption can
+occupy at most four workers indefinitely; Java cannot forcibly stop them. `invocationStarted` records entry
+to `analyze`, not submission. Provider ID lookup also runs within the timed boundary. Invalid model/settings
+and timeout-to-nanoseconds overflow fail before dispatch. Null provider result/outcome yields
+`PROVIDER_CONTRACT_VIOLATION`.
+
+### Strict decode
+
+Candidate JSON is parsed with a dedicated local Jackson configuration (not Spring MVC). Exactly one JSON
+object is required. Markdown fences, comments, trailing tokens, duplicate fields, unknown fields (including
+`minimumExperience`), missing required fields, invalid enums, numeric strings, scalar-to-array coercion,
+null collection elements, and schema bound violations fail in `DECODE`. Failure codes and locations are
+typed; parser text and rejected excerpts are not stored.
+
+Runtime operational limits (not frozen v1 schema constraints): 262144 candidate characters; nesting depth 16;
+numeric token length 32; 64 uncertainties; 4096 processed tokens/nodes.
+The candidate-size limit counts UTF-16 code units; schema string limits count Unicode code points.
+Unknown fields report only the containing object location, never the untrusted field name. Missing-field
+selection is sorted for reproducible diagnostics; explicit illegal nulls are distinct from missing fields.
+
+### Grounding policy (`job-intelligence-grounding-v1-source-context-1`)
+
+Evidence `quote` must be an exact contiguous substring of the declared raw TITLE or DESCRIPTION after JSON
+decoding. Canonical requirements are never evidence. Duplicate evidence IDs and dangling references fail.
+Unreferenced evidence is still quote-checked. Uncertainty cannot make a fabricated claim valid.
+
+Facts use finite Java checks only:
+
+- Technologies must appear as bounded tokens in referenced quotes (`Java` does not match `JavaScript`; `C`
+  does not match `C++`).
+- `REQUIRED` needs required-language markers in source-derived context; negation/optional/preferred-only windows
+  do not establish a required fact.
+- `PREFERRED` needs preferred-language markers.
+- Experience clause `text` must be a substring of referenced quotes and must match a supported form:
+  `N+`, `at least` / `minimum N`, `N–M` / `N-M` ranges (lower endpoint), `more than N` (accepted as a
+  clause form; job-wide minimum is `AMBIGUOUS`), or a simple `N years|months` quantity. `minimum` and
+  `unit` are both present or both null and must agree with the source-derived form. Both-null is allowed
+  only for a supported exclusive expression, not for an ordinary explicit numeric minimum.
+- Qualifications require the qualification text as an exact quote substring, with the same importance markers.
+- Role and seniority are accepted only for keyword patterns in source-derived contexts. Responsibilities
+  and technical concepts must be exact quote substrings. Anything else is `UNSUPPORTED_INTERPRETATION` or
+  `UNSUPPORTED_CLAIM_FORM`. No LLM judge and no general NLP.
+
+### Minimum experience
+
+Derived only in Java from required `OVERALL` clauses. Preferred, unspecified, skill-specific, and relevant
+clauses do not set the job-wide minimum. Multiple compatible lower bounds take the maximum; they are never
+summed. Conditional alternatives, exclusive `more than N`, contradictory range vs higher minimum, and
+`AMBIGUOUS_EXPERIENCE` uncertainty yield `AMBIGUOUS` with null months. No required overall clause yields
+`NOT_STATED`. Years convert with exact `× 12` `BigDecimal` (example: `2.5 YEARS` → `30` months). `KNOWN`
+requires nonnegative months.
+
+### Terminal result
+
+`Accepted(JobIntelligence, AttemptMetadata)` or `Failed(Failure, AttemptMetadata)`. Failure stages are
+`PREFLIGHT`, `EXECUTION`, `DECODE`, `VALIDATION`. Metadata keeps strategy, invocation flag, provider/model
+identities, prompt/schema identities, generation settings, timeout, elapsed, optional latency/usage/outcome,
+validation-policy version, and strategy-data digest. It does not keep exception messages, bodies, headers,
+or rejected candidate excerpts.
+
+QA correction: external identifier metadata is omitted when empty, longer than 256 ASCII characters, or
+outside `[A-Za-z0-9][A-Za-z0-9._:/@+\-]*`; values are never truncated into different identifiers. Negative
+provider latency and individual negative usage counters are omitted. Missing counters remain null.
+
+### Source-context and experience support V1
+
+Evidence quotes establish exact provenance, not complete semantic context. `SourceContext` locates every
+exact occurrence in the evidence's declared raw source and expands it to a complete sentence/clause.
+Boundaries are semicolons, exclamation/question marks, periods followed by whitespace/end, and blank-line
+paragraph breaks (LF/LF or LF/CRLF). Decimal points and unit abbreviations (`yr`, `yrs`, `mo`, `mos`, `min`)
+do not end context. Single line breaks, commas, colons, parentheses and conjunctions stay attached so that
+wrapped negation and local alternatives cannot be removed by cropping.
+
+Each raw field is capped at 1,000,000 UTF-16 units, each complete context at 1,024 Unicode code points, and
+each quote at 32 occurrences. Over-limit or cross-boundary quotes fail closed; contexts are never truncated.
+Every occurrence and every cited context must support the claim. Mixed positive/negative occurrences,
+conflicting quantity forms, unsupported local wording, or an additional unfavorable citation reject the
+whole candidate. Canonical requirements never enter context extraction. Stored quotes, IDs, clause text,
+and collection order are unchanged; offsets remain private implementation details.
+
+Skills, qualifications and interpretations are checked against these contexts. Negation/optionality and
+explicit alternatives/conditions veto affirmative non-experience claims. Required skills cannot borrow
+markers across sentence/list boundaries or override a preferred marker. These conservative checks may
+reject legitimate complex phrasing; they do not infer cross-item inheritance or implement general NLP.
+
+`ExperienceSupport` independently establishes one quantity form, scope, and conditionality per source
+context. Multiple quantity expressions in a single context are unsupported. General scope supports bare
+quantities, `experience`, and `of experience`, including the finite modifiers `software engineering`,
+`professional development`, `professional`, `development`, `work`, `overall`, or `total` before `experience`.
+`of relevant/backend/frontend experience` supports RELEVANT. `of/with/using/in <skill>` with optional
+`experience` supports SKILL_SPECIFIC for Java, Spring Boot, Kubernetes, Python, C, C++, C#, JavaScript, SQL,
+Node.js, React, Go and R. This local validation list never enters model input. Other scope wording fails
+closed, including an OVERALL label on a supported skill-specific expression or the reverse.
+
+The finite prelude permits `must [have]`, `you must [have]`, `required`, `preferred`, `preferably`, and
+`either`. Local suffix alternatives support `or` followed by a degree (including bachelor's/master's),
+certification/equivalent certification, or equivalent experience. Suffix `if`, `unless`, and `in lieu of`
+require a nonempty condition. Leading `if`, `unless`, or `in lieu of` conditions require a separating comma.
+These constructions require `conditional=true`; absence requires false. An unrelated alternative in another
+sentence cannot affect the clause. Unsupported alternatives, dangling `either`, and unrecognized preludes
+fail closed. Parsing-only case/whitespace normalization does not rewrite accepted data.
+
+The runner's derivation path consumes validated source forms, so cropped `3 years` within `more than
+3 years` yields AMBIGUOUS, and an upper-end substring of a range cannot become a higher ordinary minimum.
+Aggregate precedence is unchanged: 3–5 plus eligible 4 yields 48 months; 3–5 plus eligible 8 yields ambiguity.
+For V1, any accepted `AMBIGUOUS_EXPERIENCE` uncertainty makes the aggregate ambiguous, regardless of its
+free-text target. Other uncertainty codes do not change the minimum. This is an explicit conservative
+limitation, not semantic interpretation of uncertainty targets. Unsupported/absent experience should be
+represented by abstention/empty clauses, not fabricated null clauses.
+
+Focused verification: `./mvnw "-Dtest=JobIntelligence*Test,MinimumExperienceDeriverTest,JobExtractionBaselineTest" test`.
+Full terminal verification: `./mvnw clean verify` with Docker/Testcontainers available.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:
