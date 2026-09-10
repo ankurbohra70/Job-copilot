@@ -22,3 +22,9 @@ resume:
     max-pages: ${RESUME_MAX_PAGES:25}
     max-characters: ${RESUME_MAX_CHARACTERS:200000}
     min-meaningful-characters: ${RESUME_MIN_MEANINGFUL_CHARACTERS:50}
+job-intelligence:
+  openai:
+    enabled: ${JOB_INTELLIGENCE_OPENAI_ENABLED:false}
+    api-key: ${OPENAI_API_KEY:}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    connect-timeout: ${OPENAI_CONNECT_TIMEOUT:5s}

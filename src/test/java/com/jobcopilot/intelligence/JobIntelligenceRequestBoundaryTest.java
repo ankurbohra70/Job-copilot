@@ -46,8 +46,12 @@ class JobIntelligenceRequestBoundaryTest {
         }
         var factories = Arrays.stream(JobIntelligencePrompt.class.getDeclaredMethods())
                 .filter(m -> !Modifier.isPrivate(m.getModifiers()) && contract.isAssignableFrom(m.getReturnType())).toList();
-        assertEquals(1, factories.size(), "No alternate public or package-visible request factories");
-        assertEquals(List.of(StrategyInput.class, ExecutionSettings.class), List.of(factories.getFirst().getParameterTypes()));
+        assertEquals(2, factories.size(), "Only assembly and content-preserving budget refresh are permitted");
+        var assembly = factories.stream().filter(m -> m.getName().equals("assemble")).findFirst().orElseThrow();
+        assertEquals(List.of(StrategyInput.class, ExecutionSettings.class), List.of(assembly.getParameterTypes()));
+        var refresh = factories.stream().filter(m -> m.getName().equals("withRemainingTimeout")).findFirst().orElseThrow();
+        assertFalse(Modifier.isPublic(refresh.getModifiers()));
+        assertEquals(List.of(contract, Duration.class), List.of(refresh.getParameterTypes()));
         assertFalse(Arrays.stream(JobIntelligenceModel.class.getDeclaredMethods())
                 .anyMatch(m -> contract.isAssignableFrom(m.getReturnType())));
     }

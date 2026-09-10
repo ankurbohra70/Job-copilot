@@ -69,8 +69,9 @@ final class JobIntelligenceAttempt {
                     if (clock.nanoTime() - start >= budget || state.get() == 2) return null;
                     // Even a broken providerId implementation is inside the bounded provider boundary.
                     providerId.set(model.providerId());
-                    if (clock.nanoTime() - start >= budget || !state.compareAndSet(0, 1)) return null;
-                    return model.analyze(input);
+                    long remainingBudget = budget - (clock.nanoTime() - start);
+                    if (remainingBudget <= 0 || !state.compareAndSet(0, 1)) return null;
+                    return model.analyze(JobIntelligencePrompt.withRemainingTimeout(input, Duration.ofNanos(remainingBudget)));
                 } finally { completedAt.set(clock.nanoTime()); }
             });
         } catch (RejectedExecutionException rejected) {

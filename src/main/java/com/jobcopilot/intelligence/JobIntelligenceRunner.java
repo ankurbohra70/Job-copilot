@@ -97,14 +97,7 @@ public final class JobIntelligenceRunner {
         if (provider.outcome() != JobIntelligenceModel.Outcome.COMPLETED) {
             return new Failed(new Failure(Stage.EXECUTION, providerCode(provider.outcome()), Location.root()), withProvider);
         }
-        JobIntelligenceDecoder.Result decoded;
-        try {
-            decoded = decoder.decode(provider.candidateJson());
-        } catch (Error error) {
-            throw error;
-        } catch (RuntimeException exception) {
-            return new Failed(new Failure(Stage.DECODE, Code.MALFORMED_JSON, Location.root()), withProvider);
-        }
+        JobIntelligenceDecoder.Result decoded = decoder.decode(provider.candidateJson());
         if (decoded instanceof JobIntelligenceDecoder.Result.Failure failure) {
             return new Failed(new Failure(Stage.DECODE, failure.code(), failure.location()), withProvider);
         }

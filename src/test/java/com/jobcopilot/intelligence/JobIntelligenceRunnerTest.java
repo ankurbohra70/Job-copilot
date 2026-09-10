@@ -6,7 +6,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -45,9 +44,13 @@ class JobIntelligenceRunnerTest {
     }
 
     @Test void validHybridCandidateIsAccepted() {
-        var model = new ScriptedModel(javaRequired());
+        var model = new ScriptedModel(input -> {
+            assertTrue(input.strategyData().contains("canonicalRequirements"));
+            assertTrue(input.strategyData().contains("HYBRID_CONTEXT_ONLY"));
+            return ScriptedModel.completed(javaRequired());
+        });
         var result = runner(model).run(request(new HybridInput("Engineer", "Must have Java.",
-                new CanonicalRequirements(List.of("Java"), List.of(), null))));
+                new CanonicalRequirements(List.of("HYBRID_CONTEXT_ONLY"), List.of(), null))));
         assertInstanceOf(JobIntelligenceResult.Accepted.class, result);
         assertEquals(JobIntelligenceResult.Strategy.HYBRID_ENRICHMENT, result.metadata().strategy());
         assertEquals(1, model.invocations());
@@ -120,6 +123,7 @@ class JobIntelligenceRunnerTest {
         assertEquals(Stage.EXECUTION, failed.failure().stage());
         assertFalse(failed.failure().location().path().contains("secret"));
         assertFalse(failed.toString().contains("provider exploded"));
+        assertEquals(1, model.invocations());
     }
 
     @Test void errorIsNotMappedToProviderFailure() {
@@ -131,21 +135,83 @@ class JobIntelligenceRunnerTest {
         var model = new ScriptedModel("{");
         var result = runner(model).run(request(new LlmFirstInput("T", "D")));
         assertEquals(Stage.DECODE, ((Failed) result).failure().stage());
+        assertEquals(Code.MALFORMED_JSON, ((Failed) result).failure().code());
         assertEquals(JobIntelligenceModel.Outcome.COMPLETED, result.metadata().providerOutcome());
+        assertEquals(1, model.invocations());
+    }
+
+    @Test void schemaInvalidOutputIsTerminalWithoutRepair() {
+        var model = new ScriptedModel(javaRequired().replace("\"uncertainties\":[]",
+                "\"uncertainties\":[],\"minimumExperience\":{\"status\":\"KNOWN\",\"months\":999}"));
+        var failed = assertInstanceOf(Failed.class,
+                runner(model).run(request(new LlmFirstInput("Engineer", "Must have Java."))));
+        assertEquals(Stage.DECODE, failed.failure().stage());
+        assertEquals(Code.UNKNOWN_FIELD, failed.failure().code());
+        assertEquals(1, model.invocations());
+    }
+
+    @Test void unsupportedSkillIsTerminalWithoutRepair() {
+        var model = new ScriptedModel(javaRequired().replace("Must have Java.", "Must have JavaScript."));
+        var failed = assertInstanceOf(Failed.class,
+                runner(model).run(request(new LlmFirstInput("Engineer", "Must have JavaScript."))));
+        assertEquals(Stage.VALIDATION, failed.failure().stage());
+        assertEquals(Code.FACT_NOT_GROUNDED, failed.failure().code());
+        assertEquals(1, model.invocations());
+    }
+
+    @Test void unsupportedQualificationIsTerminalWithoutRepair() {
+        String candidate = """
+                {"facts":{"skills":[],"experienceClauses":[],"qualifications":[{"text":"degree",\
+                "importance":"REQUIRED","evidenceIds":["e1"]}]},"interpretations":{"roleFamily":null,\
+                "seniority":null,"responsibilities":[],"technicalConcepts":[]},"evidence":[{"id":"e1",\
+                "source":"DESCRIPTION","quote":"Must have Java."}],"uncertainties":[]}
+                """;
+        var model = new ScriptedModel(candidate);
+        var failed = assertInstanceOf(Failed.class,
+                runner(model).run(request(new LlmFirstInput("Engineer", "Must have Java."))));
+        assertEquals(Stage.VALIDATION, failed.failure().stage());
+        assertEquals(Code.FACT_NOT_GROUNDED, failed.failure().code());
+        assertEquals(1, model.invocations());
+    }
+
+    @Test void inconsistentExperienceIsTerminalWithoutRepair() {
+        String candidate = JobIntelligenceTestSupport.withExperience(
+                "2.5 years", "3", "YEARS", "REQUIRED", "OVERALL", false,
+                "Must have 2.5 years of experience.");
+        var model = new ScriptedModel(candidate);
+        var failed = assertInstanceOf(Failed.class, runner(model).run(request(
+                new LlmFirstInput("Engineer", "Must have 2.5 years of experience."))));
+        assertEquals(Stage.VALIDATION, failed.failure().stage());
+        assertEquals(Code.INCONSISTENT_EXPERIENCE, failed.failure().code());
+        assertEquals(1, model.invocations());
+    }
+
+    @Test void acceptedMinimumExperienceIsDerivedInJava() {
+        String candidate = JobIntelligenceTestSupport.withExperience(
+                "2.5 years", "2.5", "YEARS", "REQUIRED", "OVERALL", false,
+                "Must have 2.5 years of experience.");
+        var model = new ScriptedModel(candidate);
+        var accepted = assertInstanceOf(JobIntelligenceResult.Accepted.class, runner(model).run(request(
+                new LlmFirstInput("Engineer", "Must have 2.5 years of experience."))));
+        assertEquals(JobIntelligence.MinimumStatus.KNOWN, accepted.intelligence().minimumExperience().status());
+        assertEquals(0, new BigDecimal("30").compareTo(accepted.intelligence().minimumExperience().months()));
+        assertEquals(1, model.invocations());
     }
 
     @Test void baselineCaptureDoesNotAffectModelExecution() {
-        AtomicInteger invocations = new AtomicInteger();
-        var model = new ScriptedModel(input -> {
-            invocations.incrementAndGet();
-            assertFalse(input.strategyData().contains("CANONICAL_SENTINEL"));
-            return ScriptedModel.completed(javaRequired());
-        });
-        var runner = runner(model);
-        new JobExtractionBaseline(new JobRequirementExtractor()).capture("Must have CANONICAL_SENTINEL.");
-        var result = runner.run(request(new LlmFirstInput("Engineer", "Must have Java.")));
-        assertInstanceOf(JobIntelligenceResult.Accepted.class, result);
-        assertEquals(1, invocations.get());
+        var baseline = new JobExtractionBaseline(new JobRequirementExtractor());
+        assertEquals(JobExtractionBaseline.Status.UNAVAILABLE, baseline.capture(" ").status());
+
+        var llmFirstModel = new ScriptedModel(javaRequired());
+        var llmFirst = runner(llmFirstModel).run(request(new LlmFirstInput("Engineer", "Must have Java.")));
+        assertInstanceOf(JobIntelligenceResult.Accepted.class, llmFirst);
+        assertEquals(1, llmFirstModel.invocations());
+
+        var hybridModel = new ScriptedModel(javaRequired());
+        var hybrid = runner(hybridModel).run(request(new HybridInput("Engineer", "Must have Java.",
+                new CanonicalRequirements(List.of("Java"), List.of(), null))));
+        assertInstanceOf(JobIntelligenceResult.Accepted.class, hybrid);
+        assertEquals(1, hybridModel.invocations());
     }
 
     @Test void canonicalChangesDoNotMakeUnsupportedHybridClaimsPass() {
@@ -156,6 +222,7 @@ class JobIntelligenceRunnerTest {
                 new CanonicalRequirements(List.of("Java"), List.of(), new BigDecimal("5")))));
         assertEquals(Code.EVIDENCE_QUOTE_MISMATCH, ((Failed) missing).failure().code());
         assertEquals(Code.EVIDENCE_QUOTE_MISMATCH, ((Failed) withCanonical).failure().code());
+        assertEquals(2, model.invocations());
     }
 
     @Test void nullableRawSourcesAreTreatedAsEmptyWithoutChangingContracts() {

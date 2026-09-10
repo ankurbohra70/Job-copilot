@@ -49,6 +49,12 @@ public final class JobIntelligencePrompt {
                 settings.generationSettings(), settings.remainingTimeout()));
     }
 
+    // Refresh only the execution budget; preserve the already-assembled content and its identities.
+    static JobIntelligenceModel.ModelInput withRemainingTimeout(JobIntelligenceModel.ModelInput input, Duration timeout) {
+        return new AssembledInput(new Content(input.model(), input.instructions(), input.strategyData(),
+                input.promptVersion(), input.schemaVersion(), input.outputSchema(), input.generationSettings(), timeout));
+    }
+
     // Package visibility permits the sealed interface to name this class, not callers to construct it.
     static final class AssembledInput implements JobIntelligenceModel.ModelInput {
         private final Content content;

@@ -672,6 +672,61 @@ represented by abstention/empty clauses, not fabricated null clauses.
 Focused verification: `./mvnw "-Dtest=JobIntelligence*Test,MinimumExperienceDeriverTest,JobExtractionBaselineTest" test`.
 Full terminal verification: `./mvnw clean verify` with Docker/Testcontainers available.
 
+## JC-007 Phase 3 (strategy execution hardening)
+
+Phase 3 accepts and hardens the existing provider-neutral execution path rather than adding a second
+orchestration framework. Both `LLM_FIRST` and `HYBRID_ENRICHMENT` execute through
+`JobIntelligenceRunner`, `JobIntelligenceAttempt`, and `JobIntelligenceModel`. Each run permits at most
+one model invocation: provider failures (including a retryable outcome), malformed output, schema failure,
+or deterministic validation failure are terminal, with no retry, repair prompt, or self-critique call.
+
+`LlmFirstInput` remains structurally limited to raw title and description, and model-boundary tests verify
+that canonical-only canary data cannot reach any textual request field. Hybrid input may include the current
+canonical requirements captured from stored job state, but the validator still receives only raw TITLE and
+DESCRIPTION; canonical context cannot establish evidence or make an unsupported claim pass.
+
+Strict decoding, source grounding, uncertainty/abstention handling, experience validation, and Java-only
+minimum-experience derivation remain authoritative. Expected JC-005 baseline unavailability is represented
+by its independent baseline result and does not gate either AI strategy. Phase 3 adds no real provider
+adapter, Spring wiring, persistence, API, comparison endpoint, or evaluation orchestration.
+
+## JC-007 Phase 4 (OpenAI provider integration)
+
+Phase 4 adds one production adapter from the existing `JobIntelligenceModel` boundary to the OpenAI
+Responses API. `OpenAiJobIntelligenceModel` accepts only the already-assembled provider-neutral input,
+performs one non-streaming request, and returns raw candidate text plus bounded provider metadata. It does
+not inspect strategy types, reconstruct prompts, parse domain objects, validate evidence, or derive
+experience. OpenAI Structured Outputs sends the repository's existing JSON Schema with strict enforcement;
+the existing decoder and deterministic validator still process every completed candidate afterward.
+
+The official `openai-java` SDK is pinned to `4.60.0`. SDK retries are set to zero, connection-failure replay
+and redirects are disabled, and request bodies are marked non-replayable. This last control is necessary:
+OkHttp can otherwise repeat a POST for HTTP 503 with `Retry-After: 0` even with connection retries disabled.
+OkHttp `4.12.0`, already used by the SDK, is an explicit compile dependency for this transport control.
+Loopback tests use the production client factory and count actual requests across success, HTTP errors,
+redirects, authentication challenges, disconnects, partial bodies, and timeouts.
+`JobIntelligenceAttempt` owns the domain deadline and cancellation and deducts queue/provider-ID time before
+passing the remaining budget to the adapter. Budget refresh preserves assembled content and identities.
+The adapter applies that remaining budget as a per-request transport ceiling. There is no repair, fallback,
+or second completion. Missing provider metadata does not discard candidate output, and permanent errors in
+failed Responses envelopes remain permanent. An existing model bean suppresses creation of the OpenAI model bean.
+
+OpenAI wiring is disabled by default and requires `JOB_INTELLIGENCE_OPENAI_ENABLED=true` plus a nonblank
+`OPENAI_API_KEY`. Supplying a key alone does not enable the integration. SDK request/body logging is off,
+configuration rendering redacts the key, and provider error bodies are never returned in result metadata.
+Normal CI performs no external OpenAI calls. The optional live smoke test runs only when
+`JOB_INTELLIGENCE_LIVE_TEST=true`; it uses `OPENAI_MODEL` when set and otherwise uses the recommended
+`gpt-5.6-terra` model:
+
+```powershell
+$env:JOB_INTELLIGENCE_LIVE_TEST = "true"
+$env:OPENAI_API_KEY = "<your-key>"
+./mvnw.cmd "-Dtest=OpenAiJobIntelligenceLiveSmokeTest" test
+```
+
+This phase adds no REST endpoint, persistence, migration, evaluation framework, second provider, or
+matching/ranking behavior.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:
@@ -687,6 +742,10 @@ Full terminal verification: `./mvnw clean verify` with Docker/Testcontainers ava
 | `RESUME_MAX_PAGES` | `25` |
 | `RESUME_MAX_CHARACTERS` | `200000` |
 | `RESUME_MIN_MEANINGFUL_CHARACTERS` | `50` |
+| `JOB_INTELLIGENCE_OPENAI_ENABLED` | `false` |
+| `OPENAI_API_KEY` | empty |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
+| `OPENAI_CONNECT_TIMEOUT` | `5s` |
 
 Hibernate `ddl-auto` is `validate`. Schema evolution is Flyway-only. If validation or migration fails, do not delete the Docker volume automatically: preserve it, inspect `flyway_schema_history`, and apply an explicit local recovery plan.
 

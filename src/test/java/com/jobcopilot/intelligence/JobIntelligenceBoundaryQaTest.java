@@ -40,18 +40,36 @@ class JobIntelligenceBoundaryQaTest {
                     System.getProperty("java.class.path"), "-d", classes.toString()), null, List.of(unit)).call();
         }
     }
-    @Test void intelligenceHasNoProductionWiringOrForbiddenDependencies() throws Exception {
+    @Test void frozenCoreAndOpenAiIntegrationHavePreciseDependencyBoundaries() throws Exception {
         Path root = Path.of("src/main/java");
         try (var paths = Files.walk(root)) {
             for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
                 String source = Files.readString(path);
-                if (path.toString().contains("intelligence")) {
-                    for (String forbidden : List.of("com.jobcopilot.job.", "com.jobcopilot.resume.", "com.jobcopilot.matching.", "org.springframework", "jakarta.persistence"))
+                String normalized = path.toString().replace('\\', '/');
+                boolean provider = normalized.contains("/com/jobcopilot/intelligence/openai/");
+                boolean intelligence = normalized.contains("/com/jobcopilot/intelligence/");
+                if (provider) {
+                    for (String forbidden : List.of("com.jobcopilot.job.", "com.jobcopilot.resume.",
+                            "com.jobcopilot.matching.", "jakarta.persistence"))
+                        assertFalse(source.contains(forbidden), path + ": " + forbidden);
+                    boolean wiring = normalized.equals("src/main/java/com/jobcopilot/intelligence/openai/OpenAiJobIntelligenceConfiguration.java")
+                            || normalized.equals("src/main/java/com/jobcopilot/intelligence/openai/OpenAiJobIntelligenceProperties.java");
+                    if (!wiring) {
+                        for (String forbidden : List.of("org.springframework", "JobIntelligenceDecoder",
+                                "JobIntelligenceValidator", "MinimumExperienceDeriver", "LlmFirstInput",
+                                "HybridInput", "CanonicalRequirements"))
+                            assertFalse(source.contains(forbidden), path + ": " + forbidden);
+                    }
+                } else if (intelligence) {
+                    for (String forbidden : List.of("com.openai", ".intelligence.openai",
+                            "com.jobcopilot.job.", "com.jobcopilot.resume.", "com.jobcopilot.matching.",
+                            "org.springframework", "jakarta.persistence"))
                         assertFalse(source.contains(forbidden), path + ": " + forbidden);
                 } else {
                     assertFalse(source.contains("com.jobcopilot.intelligence"), path.toString());
                     assertFalse(source.contains("JobIntelligenceRunner"), path.toString());
                 }
+                if (source.contains("com.openai")) assertTrue(provider, path + ": OpenAI import outside provider package");
             }
         }
     }

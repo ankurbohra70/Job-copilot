@@ -11,7 +11,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import static com.jobcopilot.intelligence.JobIntelligenceTestSupport.ScriptedModel;
+import static com.jobcopilot.intelligence.JobIntelligenceTestSupport.javaRequired;
+import static com.jobcopilot.intelligence.JobIntelligenceTestSupport.runner;
 import static com.jobcopilot.intelligence.JobIntelligencePrompt.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +41,22 @@ class JobIntelligenceIsolationTest {
         assertEquals(before, request(source));
         assertEquals(JobExtractionBaseline.Status.UNAVAILABLE, baseline.capture(" ").status());
         assertEquals(before, request(source));
+    }
+
+    @Test void canonicalCanaryCannotReachLlmFirstModelBoundary() {
+        String canary = "JC007_CANONICAL_ONLY_CANARY_9F3A";
+        var source = snapshot(List.of(canary));
+        var model = new ScriptedModel(input -> {
+            assertTrue(Stream.of(input.model(), input.instructions(), input.strategyData(), input.promptVersion(),
+                            input.schemaVersion(), input.outputSchema())
+                    .noneMatch(value -> value != null && value.contains(canary)));
+            return ScriptedModel.completed(javaRequired());
+        });
+        var result = runner(model).run(new JobIntelligenceRunner.Request(
+                new LlmFirstInput(source.title(), source.description()), JobIntelligencePromptTest.settings()));
+        assertInstanceOf(JobIntelligenceResult.Accepted.class, result);
+        assertEquals(JobIntelligenceResult.Strategy.LLM_FIRST, result.metadata().strategy());
+        assertEquals(1, model.invocations());
     }
 
     @Test void strategyContractsExposeOnlyPermittedData() {

@@ -6,10 +6,12 @@ import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.core.exc.StreamConstraintsException;
 import tools.jackson.core.json.JsonReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.exc.MismatchedInputException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -79,6 +81,9 @@ final class JobIntelligenceDecoder {
         JsonNode tree;
         try {
             tree = mapper.readTree(candidateJson);
+        } catch (NumberFormatException exception) {
+            // Jackson's BigDecimal tree reader exposes exponent overflow directly.
+            return new Result.Failure(Code.MALFORMED_JSON, Location.root());
         } catch (RuntimeException exception) {
             return classifyParse(exception);
         }
@@ -336,7 +341,7 @@ final class JobIntelligenceDecoder {
         BigDecimal value;
         try {
             value = node.decimalValue();
-        } catch (RuntimeException exception) {
+        } catch (NumberFormatException | StreamConstraintsException exception) {
             return new Result.Failure(Code.TYPE_MISMATCH, Location.of(path));
         }
         if (value.compareTo(min) < 0 || value.compareTo(max) > 0) return new Result.Failure(Code.BOUND_VIOLATION, Location.of(path));
@@ -352,6 +357,11 @@ final class JobIntelligenceDecoder {
     }
 
     private Result classifyParse(RuntimeException exception) {
+        // Only candidate-driven Jackson failures belong to the decode taxonomy.
+        // Mapper configuration, DTO construction and other implementation defects must propagate.
+        if (!(exception instanceof StreamReadException)
+                && !(exception instanceof StreamConstraintsException)
+                && !(exception instanceof MismatchedInputException)) throw exception;
         String type = exception.getClass().getSimpleName();
         if (type.contains("Unrecognized")) return new Result.Failure(Code.UNKNOWN_FIELD, Location.root());
         if (type.contains("Duplicate") || looksLikeDuplicate(exception)) {
