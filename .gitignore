@@ -1,4 +1,5 @@
 target/
+.local-backups/
 .mvn/wrapper/apache-maven-*/
 .mvn/wrapper/*-bin.zip
 .idea/

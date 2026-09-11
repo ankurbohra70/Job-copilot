@@ -1,0 +1,155 @@
+{
+  "scriptedResponseVersion": "jc007-scripted-v1",
+  "cases": [
+    {
+      "caseId": "01-required-skill",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "Java is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "02-required-preferred",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}, {"name": "Redis", "importance": "REQUIRED", "evidenceIds": ["e1"]},
+        {"name": "Docker", "importance": "PREFERRED", "evidenceIds": ["e2"]}, {"name": "AWS", "importance": "PREFERRED", "evidenceIds": ["e2"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "Must have Java and Redis"}, {"id": "e2", "source": "DESCRIPTION", "quote": "Docker and AWS are preferred"}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "03-framework-overlap",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "Spring Framework", "importance": "REQUIRED", "evidenceIds": ["e1"]}, {"name": "Spring Boot", "importance": "REQUIRED", "evidenceIds": ["e1"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "Spring Framework and Spring Boot are required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "04-aliases",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "Postgres", "importance": "REQUIRED", "evidenceIds": ["e1"]}, {"name": "k8s", "importance": "REQUIRED", "evidenceIds": ["e1"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "Postgres and k8s are required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "05-symbol-skills",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "C++", "importance": "PREFERRED", "evidenceIds": ["e1"]}, {"name": "C#", "importance": "PREFERRED", "evidenceIds": ["e2"]}, {"name": "Dotnet", "importance": "PREFERRED", "evidenceIds": ["e3"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "C++ is preferred."}, {"id": "e2", "source": "DESCRIPTION", "quote": "C# is preferred."}, {"id": "e3", "source": "DESCRIPTION", "quote": "Dotnet is preferred."}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "06-java-javascript",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "JavaScript", "importance": "REQUIRED", "evidenceIds": ["e1"]}, {"name": "TypeScript", "importance": "REQUIRED", "evidenceIds": ["e1"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "JavaScript and TypeScript are required"}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "07-title-only",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "UNSPECIFIED", "evidenceIds": ["e1"]}], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "TITLE", "quote": "Java Backend Engineer"}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "08-markdown-list",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}, {"name": "Spring Boot", "importance": "REQUIRED", "evidenceIds": ["e2"]}, {"name": "Docker", "importance": "PREFERRED", "evidenceIds": ["e3"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "Java is required."}, {"id": "e2", "source": "DESCRIPTION", "quote": "Spring Boot is required."}, {"id": "e3", "source": "DESCRIPTION", "quote": "Docker is preferred."}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "09-numeric-years",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "3 years of experience", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "3 years of experience is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "10-range",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "3-5 years of experience", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "3-5 years of experience required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "11-decimal",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "2.5 years of experience", "minimum": 2.5, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "At least 2.5 years of experience is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "12-months",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "18 months of experience", "minimum": 18, "unit": "MONTHS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "18 months of experience is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "13-multiple-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [
+        {"text": "2+ years of experience", "minimum": 2, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]},
+        {"text": "4 years of experience", "minimum": 4, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e2"]}
+      ], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "2+ years of experience required."}, {"id": "e2", "source": "DESCRIPTION", "quote": "4 years of experience required."}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "14-preferred-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "5 years of experience", "minimum": 5, "unit": "YEARS", "importance": "PREFERRED", "scope": "OVERALL", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "5 years of experience is preferred."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "15-conditional-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "3 years of experience", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": true, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "3 years of experience or a bachelor's degree is required."}], "uncertainties": [{"code": "AMBIGUOUS_EXPERIENCE", "target": "minimumExperience", "evidenceIds": ["e1"]}]}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "16-relevant-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [{"text": "3 years of relevant experience", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "RELEVANT", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "3 years of relevant experience is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "17-skill-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}], "experienceClauses": [{"text": "5 years of Java experience", "minimum": 5, "unit": "YEARS", "importance": "REQUIRED", "scope": "SKILL_SPECIFIC", "conditional": false, "evidenceIds": ["e1"]}], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "5 years of Java experience is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "18-unrelated-duration",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "Java is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "19-required-qualification",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [], "qualifications": [{"text": "bachelor's degree in Computer Science", "importance": "REQUIRED", "evidenceIds": ["e1"]}]}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "A bachelor's degree in Computer Science is required."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "20-preferred-qualification",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1"]}], "experienceClauses": [], "qualifications": [{"text": "master's degree", "importance": "PREFERRED", "evidenceIds": ["e2"]}]}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "Java is required."}, {"id": "e2", "source": "DESCRIPTION", "quote": "A master's degree is preferred."}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "21-negation-optionality",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "22-repeated-evidence",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "evidenceIds": ["e1", "e2"]}, {"name": "Docker", "importance": "PREFERRED", "evidenceIds": ["e3"]}
+      ], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [
+        {"id": "e1", "source": "DESCRIPTION", "quote": "Java is required."}, {"id": "e2", "source": "DESCRIPTION", "quote": "Java is required for services."}, {"id": "e3", "source": "DESCRIPTION", "quote": "Docker is preferred."}
+      ], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "23-ambiguous-experience",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [], "uncertainties": [{"code": "AMBIGUOUS_EXPERIENCE", "target": "minimumExperience", "evidenceIds": []}]}},
+      "llmFirst": {"outcome": "COMPLETED", "candidateRef": "HYBRID"}
+    },
+    {
+      "caseId": "24-sparse-unsupported",
+      "hybrid": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [{"name": "Java", "importance": "UNSPECIFIED", "evidenceIds": ["e1"]}], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [{"id": "e1", "source": "DESCRIPTION", "quote": "Collaborate with a friendly team."}], "uncertainties": []}},
+      "llmFirst": {"outcome": "COMPLETED", "candidate": {"facts": {"skills": [], "experienceClauses": [], "qualifications": []}, "interpretations": {"roleFamily": null, "seniority": null, "responsibilities": [], "technicalConcepts": []}, "evidence": [], "uncertainties": [{"code": "INSUFFICIENT_CONTEXT", "target": "facts", "evidenceIds": []}]}}
+    }
+  ]
+}

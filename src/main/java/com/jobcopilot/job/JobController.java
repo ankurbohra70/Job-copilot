@@ -5,6 +5,8 @@ import com.jobcopilot.job.dto.JobPageResponse;
 import com.jobcopilot.job.dto.JobResponse;
 import com.jobcopilot.job.dto.UpdateJobRequest;
 import com.jobcopilot.job.dto.UpdateJobStatusRequest;
+import com.jobcopilot.job.dto.JobRequirementsRequest;
+import com.jobcopilot.job.dto.JobRequirementsResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class JobController {
 
     private final JobService jobService;
+
+    @GetMapping("/{id}/requirements")
+    public JobRequirementsResponse getRequirements(@PathVariable Long id) { return jobService.getRequirements(id); }
+
+    @PutMapping("/{id}/requirements")
+    public JobRequirementsResponse replaceRequirements(@PathVariable Long id, @Valid @RequestBody JobRequirementsRequest request) {
+        return jobService.replaceRequirements(id, request);
+    }
+
+    @PostMapping("/{id}/requirements/extract")
+    public JobRequirementsResponse extractRequirements(@PathVariable Long id) {
+        return jobService.extractRequirements(id);
+    }
 
     public JobController(JobService jobService) {
         this.jobService = jobService;

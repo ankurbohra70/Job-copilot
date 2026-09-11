@@ -8,6 +8,35 @@ import java.time.LocalDateTime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class JobTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"2.345", "80.001", "80.004", "-2", "100"})
+    void invalidInternalMinimumFailsBeforeAnyMutation(String value) {
+        Job job = new Job("Role", "Company", null, null, null, null, null);
+        job.replaceRequirements(java.util.List.of("redis"), java.util.List.of("docker"), new java.math.BigDecimal("3"));
+        var before = job.requirements();
+        var timestamp = job.getUpdatedAt();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
+                job.replaceRequirements(java.util.List.of("java"), java.util.List.of(), new java.math.BigDecimal(value)));
+        assertEquals(before, job.requirements());
+        assertEquals(timestamp, job.getUpdatedAt());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"0", "0.00", "0.01", "1", "1.5", "2", "2.00", "79.99", "80", "80.00"})
+    void validMinimumIsNormalizedWithoutRounding(String value) {
+        assertEquals(new java.math.BigDecimal(value).setScale(2), Job.canonicalExperience(new java.math.BigDecimal(value)));
+    }
+    @Test
+    void requirementsAreDefensiveAndPreserveCoreState() {
+        Job job = new Job("Backend Engineer", "Example", null, null, null, null, null);
+        var required = new java.util.ArrayList<>(java.util.List.of("java"));
+        job.replaceRequirements(required, java.util.List.of(), java.math.BigDecimal.ONE);
+        required.clear();
+        assertEquals(java.util.List.of("java"), job.requirements().requiredSkills());
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class, () -> job.requirements().requiredSkills().add("python"));
+        assertEquals(JobStatus.DISCOVERED, job.getStatus());
+        assertEquals("Backend Engineer", job.getTitle());
+    }
 
     @Test
     void replacingDetailsPreservesStatusAndTimestampsUntilJpaLifecycleRuns() {

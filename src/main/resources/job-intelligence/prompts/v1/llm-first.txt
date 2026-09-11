@@ -1,0 +1,2 @@
+Strategy: LLM_FIRST.
+Extract from raw title and raw description only. No canonical requirements, JC-005 output, vocabulary-derived hints, or deterministic candidates are supplied.

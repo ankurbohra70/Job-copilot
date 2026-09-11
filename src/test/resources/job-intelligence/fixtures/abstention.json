@@ -1,0 +1,21 @@
+{
+  "facts": {
+    "skills": [],
+    "experienceClauses": [],
+    "qualifications": []
+  },
+  "interpretations": {
+    "roleFamily": null,
+    "seniority": null,
+    "responsibilities": [],
+    "technicalConcepts": []
+  },
+  "evidence": [],
+  "uncertainties": [
+    {
+      "code": "INSUFFICIENT_CONTEXT",
+      "target": "facts",
+      "evidenceIds": []
+    }
+  ]
+}

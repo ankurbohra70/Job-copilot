@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JobIntelligenceOutputV1",
+  "type": "object",
+  "properties": {
+    "facts": {
+      "$ref": "#/$defs/Facts"
+    },
+    "interpretations": {
+      "$ref": "#/$defs/Interpretations"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "maxItems": 80,
+      "minItems": 0
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Uncertainty"
+      }
+    }
+  },
+  "required": [
+    "facts",
+    "interpretations",
+    "evidence",
+    "uncertainties"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Skill": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "importance": {
+          "type": "string",
+          "enum": [
+            "REQUIRED",
+            "PREFERRED",
+            "UNSPECIFIED"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "name",
+        "importance",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "ExperienceClause": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "minimum": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 960
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "YEARS",
+            "MONTHS",
+            null
+          ]
+        },
+        "importance": {
+          "type": "string",
+          "enum": [
+            "REQUIRED",
+            "PREFERRED",
+            "UNSPECIFIED"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "OVERALL",
+            "RELEVANT",
+            "SKILL_SPECIFIC"
+          ]
+        },
+        "conditional": {
+          "type": "boolean"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "text",
+        "minimum",
+        "unit",
+        "importance",
+        "scope",
+        "conditional",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "Qualification": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "importance": {
+          "type": "string",
+          "enum": [
+            "REQUIRED",
+            "PREFERRED",
+            "UNSPECIFIED"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "text",
+        "importance",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "TextClaim": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "text",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "RoleClaim": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "enum": [
+            "BACKEND",
+            "FRONTEND",
+            "FULL_STACK",
+            "DATA_ENGINEERING",
+            "PLATFORM_DEVOPS",
+            "OTHER"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "value",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "SeniorityClaim": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "enum": [
+            "INTERN",
+            "ENTRY",
+            "MID",
+            "SENIOR",
+            "LEAD",
+            "STAFF_PLUS",
+            "MANAGEMENT"
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "value",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "TITLE",
+            "DESCRIPTION"
+          ]
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "Uncertainty": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "AMBIGUOUS_CLASSIFICATION",
+            "AMBIGUOUS_EXPERIENCE",
+            "CONFLICTING_SOURCE",
+            "INSUFFICIENT_CONTEXT"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 3,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "code",
+        "target",
+        "evidenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "Facts": {
+      "type": "object",
+      "properties": {
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Skill"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        },
+        "experienceClauses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExperienceClause"
+          },
+          "maxItems": 8,
+          "minItems": 0
+        },
+        "qualifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Qualification"
+          },
+          "maxItems": 12,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "skills",
+        "experienceClauses",
+        "qualifications"
+      ],
+      "additionalProperties": false
+    },
+    "Interpretations": {
+      "type": "object",
+      "properties": {
+        "roleFamily": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoleClaim"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seniority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SeniorityClaim"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responsibilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TextClaim"
+          },
+          "maxItems": 12,
+          "minItems": 0
+        },
+        "technicalConcepts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TextClaim"
+          },
+          "maxItems": 12,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "roleFamily",
+        "seniority",
+        "responsibilities",
+        "technicalConcepts"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

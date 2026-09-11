@@ -1,0 +1,4 @@
+Strategy: HYBRID_ENRICHMENT.
+Use raw title and description with current canonicalRequirements as contextual guidance.
+Canonical context can be empty or manually corrected and need not agree with a new extraction.
+Canonical requirements are never evidence. Ground every affirmative claim in raw TITLE or DESCRIPTION, even when canonical context suggests it.
