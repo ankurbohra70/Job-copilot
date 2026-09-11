@@ -1,0 +1,203 @@
+{
+  "datasetVersion": "jc007-evaluation-v1",
+  "scriptedResponseVersion": "jc007-scripted-v1",
+  "matchingVocabularyVersion": "v1",
+  "cases": [
+    {
+      "id": "01-required-skill", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "required", "canonical-accurate"],
+      "title": "Backend Engineer", "description": "Java is required.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [{"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Java is required.", "occurrence": 1}]}], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "02-required-preferred", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "required", "preferred", "multi-skill", "dense-prose", "canonical-partial"],
+      "title": "Platform Engineer", "description": "Must have Java and Redis; Docker and AWS are preferred.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": ["Docker"], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Must have Java and Redis", "occurrence": 1}]},
+        {"name": "Redis", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Must have Java and Redis", "occurrence": 1}]},
+        {"name": "Docker", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "Docker and AWS are preferred", "occurrence": 1}]},
+        {"name": "AWS", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "Docker and AWS are preferred", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "03-framework-overlap", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "framework-overlap", "multi-skill", "canonical-accurate"],
+      "title": "Java Engineer", "description": "Spring Framework and Spring Boot are required.",
+      "canonicalRequirements": {"requiredSkills": ["Spring Framework", "Spring Boot"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "Spring Framework", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Spring Framework and Spring Boot are required.", "occurrence": 1}]},
+        {"name": "Spring Boot", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Spring Framework and Spring Boot are required.", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "04-aliases", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "aliases", "required", "canonical-manual"],
+      "title": "Cloud Developer", "description": "Postgres and k8s are required.",
+      "canonicalRequirements": {"requiredSkills": ["PostgreSQL", "Kubernetes"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "PostgreSQL", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Postgres and k8s are required.", "occurrence": 1}]},
+        {"name": "Kubernetes", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Postgres and k8s are required.", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "05-symbol-skills", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "symbols", "preferred", "canonical-accurate"],
+      "title": "Application Developer", "description": "C++ is preferred. C# is preferred. Dotnet is preferred.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": ["C++", "C#", ".NET"], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "C++", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "C++ is preferred.", "occurrence": 1}]},
+        {"name": "C#", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "C# is preferred.", "occurrence": 1}]},
+        {"name": ".NET", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "Dotnet is preferred.", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "06-java-javascript", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "multi-skill", "optionality", "canonical-stale"],
+      "title": "Web Engineer", "description": "JavaScript and TypeScript are required; Java is optional.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "JavaScript", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "JavaScript and TypeScript are required", "occurrence": 1}]},
+        {"name": "TypeScript", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "JavaScript and TypeScript are required", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "07-title-only", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "title-only", "canonical-empty"],
+      "title": "Java Backend Engineer", "description": "Build reliable services.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [{"name": "Java", "importance": "UNSPECIFIED", "support": [{"source": "TITLE", "quote": "Java Backend Engineer", "occurrence": 1}]}], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "08-markdown-list", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "markdown", "bullets", "required", "preferred", "canonical-accurate"],
+      "title": "API Engineer", "description": "## Requirements\n- Java is required.\n- Spring Boot is required.\n## Nice to have\n- Docker is preferred.",
+      "canonicalRequirements": {"requiredSkills": ["Java", "Spring Boot"], "preferredSkills": ["Docker"], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Java is required.", "occurrence": 1}]},
+        {"name": "Spring Boot", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Spring Boot is required.", "occurrence": 1}]},
+        {"name": "Docker", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "Docker is preferred.", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "09-numeric-years", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "numeric-years", "overall", "canonical-accurate"],
+      "title": "Software Engineer", "description": "3 years of experience is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": 3},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "3 years of experience is required.", "occurrence": 1}]}], "minimumExperience": {"status": "KNOWN", "months": 36}}
+    },
+    {
+      "id": "10-range", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "range", "overall", "canonical-accurate"],
+      "title": "Software Engineer", "description": "3-5 years of experience required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": 3},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "3-5 years of experience required.", "occurrence": 1}]}], "minimumExperience": {"status": "KNOWN", "months": 36}}
+    },
+    {
+      "id": "11-decimal", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "decimal", "overall", "canonical-partial"],
+      "title": "Software Engineer", "description": "At least 2.5 years of experience is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 2.5, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "At least 2.5 years of experience is required.", "occurrence": 1}]}], "minimumExperience": {"status": "KNOWN", "months": 30}}
+    },
+    {
+      "id": "12-months", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "months", "overall", "canonical-accurate"],
+      "title": "Support Engineer", "description": "18 months of experience is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": 1.5},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 18, "unit": "MONTHS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "18 months of experience is required.", "occurrence": 1}]}], "minimumExperience": {"status": "KNOWN", "months": 18}}
+    },
+    {
+      "id": "13-multiple-experience", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "multiple-experience", "overall", "canonical-stale"],
+      "title": "Senior Engineer", "description": "2+ years of experience required. 4 years of experience required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": 2},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [
+        {"id": "exp-1", "minimum": 2, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "2+ years of experience required.", "occurrence": 1}]},
+        {"id": "exp-2", "minimum": 4, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "4 years of experience required.", "occurrence": 1}]}
+      ], "minimumExperience": {"status": "KNOWN", "months": 48}}
+    },
+    {
+      "id": "14-preferred-experience", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "preferred", "overall", "canonical-empty"],
+      "title": "Engineer", "description": "5 years of experience is preferred.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 5, "unit": "YEARS", "importance": "PREFERRED", "scope": "OVERALL", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "5 years of experience is preferred.", "occurrence": 1}]}], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "15-conditional-experience", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "conditional", "overall", "ambiguous", "canonical-empty"],
+      "title": "Engineer", "description": "3 years of experience or a bachelor's degree is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "OVERALL", "conditional": true, "support": [{"source": "DESCRIPTION", "quote": "3 years of experience or a bachelor's degree is required.", "occurrence": 1}]}], "minimumExperience": {"status": "AMBIGUOUS", "months": null}}
+    },
+    {
+      "id": "16-relevant-experience", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "relevant", "canonical-manual"],
+      "title": "Engineer", "description": "3 years of relevant experience is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 3, "unit": "YEARS", "importance": "REQUIRED", "scope": "RELEVANT", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "3 years of relevant experience is required.", "occurrence": 1}]}], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "17-skill-experience", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "experience", "skill-specific", "required", "canonical-partial"],
+      "title": "Java Engineer", "description": "5 years of Java experience is required.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [{"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "5 years of Java experience is required.", "occurrence": 1}]}], "qualifications": [], "experienceClauses": [{"id": "exp-1", "minimum": 5, "unit": "YEARS", "importance": "REQUIRED", "scope": "SKILL_SPECIFIC", "conditional": false, "support": [{"source": "DESCRIPTION", "quote": "5 years of Java experience is required.", "occurrence": 1}]}], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "18-unrelated-duration", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "experience", "unrelated-duration", "canonical-accurate"],
+      "title": "Java Engineer", "description": "The company was founded 10 years ago. Java is required.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [{"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Java is required.", "occurrence": 1}]}], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "19-required-qualification", "reviewStatus": "REVIEWED",
+      "tags": ["qualification", "required", "canonical-empty"],
+      "title": "Software Engineer", "description": "A bachelor's degree in Computer Science is required.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [{"id": "qual-1", "acceptedTexts": ["bachelor's degree in Computer Science", "A bachelor's degree in Computer Science"], "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "A bachelor's degree in Computer Science is required.", "occurrence": 1}]}], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "20-preferred-qualification", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "qualification", "preferred", "canonical-accurate"],
+      "title": "Java Engineer", "description": "Java is required. A master's degree is preferred.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [{"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Java is required.", "occurrence": 1}]}], "qualifications": [{"id": "qual-1", "acceptedTexts": ["master's degree", "A master's degree"], "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "A master's degree is preferred.", "occurrence": 1}]}], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "21-negation-optionality", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "negation", "optionality", "canonical-stale"],
+      "title": "Generalist Engineer", "description": "No Java required; Docker is optional.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": ["Docker"], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "22-repeated-evidence", "reviewStatus": "REVIEWED",
+      "tags": ["skills", "required", "preferred", "repeated-evidence", "canonical-accurate"],
+      "title": "Java Engineer", "description": "Java is required. Java is required for services. Docker is preferred.",
+      "canonicalRequirements": {"requiredSkills": ["Java"], "preferredSkills": ["Docker"], "minYearsExperience": null},
+      "gold": {"skills": [
+        {"name": "Java", "importance": "REQUIRED", "support": [{"source": "DESCRIPTION", "quote": "Java is required.", "occurrence": 1}, {"source": "DESCRIPTION", "quote": "Java is required for services.", "occurrence": 1}]},
+        {"name": "Docker", "importance": "PREFERRED", "support": [{"source": "DESCRIPTION", "quote": "Docker is preferred.", "occurrence": 1}]}
+      ], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    },
+    {
+      "id": "23-ambiguous-experience", "reviewStatus": "REVIEWED",
+      "tags": ["experience", "ambiguous", "canonical-empty"],
+      "title": "Engineer", "description": "Experience is required; several years are preferred.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "AMBIGUOUS", "months": null}}
+    },
+    {
+      "id": "24-sparse-unsupported", "reviewStatus": "REVIEWED",
+      "tags": ["sparse", "unsupported-claim", "canonical-empty"],
+      "title": "Engineer", "description": "Collaborate with a friendly team.",
+      "canonicalRequirements": {"requiredSkills": [], "preferredSkills": [], "minYearsExperience": null},
+      "gold": {"skills": [], "qualifications": [], "experienceClauses": [], "minimumExperience": {"status": "NOT_STATED", "months": null}}
+    }
+  ]
+}

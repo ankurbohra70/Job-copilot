@@ -23,6 +23,11 @@ resume:
     max-characters: ${RESUME_MAX_CHARACTERS:200000}
     min-meaningful-characters: ${RESUME_MIN_MEANINGFUL_CHARACTERS:50}
 job-intelligence:
+  gemini:
+    enabled: ${JOB_INTELLIGENCE_GEMINI_ENABLED:false}
+    api-key: ${GEMINI_API_KEY:}
+    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+    connect-timeout: ${GEMINI_CONNECT_TIMEOUT:5s}
   openai:
     enabled: ${JOB_INTELLIGENCE_OPENAI_ENABLED:false}
     api-key: ${OPENAI_API_KEY:}

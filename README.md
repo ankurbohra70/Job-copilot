@@ -727,6 +727,49 @@ $env:OPENAI_API_KEY = "<your-key>"
 This phase adds no REST endpoint, persistence, migration, evaluation framework, second provider, or
 matching/ranking behavior.
 
+## JC-007 Phase 5 (offline evaluation harness)
+
+Phase 5 adds a test-only, deterministic evaluation harness under
+`src/test/java/com/jobcopilot/intelligence/evaluation`. It runs the frozen JC-005 extractor baseline,
+Hybrid Enrichment, and LLM-first independently against exactly 24 manually reviewed cases. The versioned
+case resource is the authority for manually reviewed gold truth and frozen Hybrid canonical context. The AI lanes
+use committed fixture responses through the public `JobIntelligenceRunner`; they make no live provider
+calls and do not bypass decoding, grounding validation, or Java-derived minimum experience.
+
+The harness reports required/preferred skill precision, recall, and F1; class inversions, duplicate and
+cross-class predictions; qualification metrics; clause-level experience quantity, importance, scope,
+conditionality, and provenance; aggregate minimum-experience accuracy; abstention quality; reliability;
+failure taxonomy; category breakdowns; and reproducibility identities. A zero denominator is rendered as
+an unavailable metric rather than silently converted to zero.
+
+Run the evaluation and generate deterministic human-readable and machine-readable reports with:
+
+```powershell
+./mvnw.cmd "-Dtest=com.jobcopilot.intelligence.evaluation.*Test" test
+```
+
+Reports are written to `target/job-intelligence-evaluation/report.txt` and `report.json`. They are build
+artifacts and are not committed. Fixture-backed scores validate the evaluation machinery and expose
+known deterministic behavior; they do not establish strategy or real-provider superiority. In this fixture set,
+23 of 24 LLM-first attempts intentionally reuse the Hybrid candidate payload, so those two lanes are not
+independent model-quality measurements.
+
+Gemini real-provider acceptance is a separate, opt-in integration check. It proves that a small purposeful set
+can traverse the existing provider-neutral runner and deterministic validation pipeline; it is not a comparative
+benchmark. Ordinary `mvn verify` neither requires Gemini credentials nor spends quota. To run the live check,
+set the `GEMINI_API_KEY` environment variable without printing or persisting its value, then run:
+
+```powershell
+./mvnw.cmd "-Djobcopilot.gemini.live=true" \
+  "-Dtest=com.jobcopilot.intelligence.gemini.GeminiJobIntelligenceLiveAcceptanceTest" test
+```
+
+The acceptance configuration uses `gemini-3.5-flash-lite` by default, unary Gemini `generateContent`, JSON
+response mode with the authoritative schema supplied as instruction, temperature 0, a 4096-token output limit,
+and a 45-second per-attempt deadline. The strict local decoder and validator remain authoritative. It performs
+three calls and never retries, repairs, or falls back. No production persistence, API, matching, ranking, or
+canonical-authority behavior is changed.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:
