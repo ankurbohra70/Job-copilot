@@ -816,6 +816,24 @@ and a 45-second per-attempt deadline. The strict local decoder and validator rem
 three calls and never retries, repairs, or falls back. No production persistence, API, matching, ranking, or
 canonical-authority behavior is changed.
 
+## JC-008 Phase 4 (manual discovery API)
+
+Phase 4 exposes the existing synchronous Lever discovery pipeline through `/api/job-sources`. A caller can
+create and inspect Lever sources, enable or disable future synchronization, manually synchronize a source,
+inspect source-scoped run history, and browse LIVE or CLOSED external listings. Listing responses provide the
+linked canonical `jobId`, the independent canonical `jobStatus`, version-aware extraction currency, and ranking
+readiness. Canonical job details and requirements continue through `/api/jobs/{jobId}` and
+`/api/jobs/{jobId}/requirements`.
+
+Manual synchronization runs in the request thread. Expected provider failures return HTTP 200 with an audited
+terminal `FAILED` run and a safe failure code; local missing, disabled, or conflicting source state remains a
+4xx API error. The API layer does not wrap synchronization in an outer transaction: the JC-008 Phase 3 short
+transactions and transaction-free provider calls remain authoritative.
+
+There is no application authentication or authorization layer. These endpoints have the same deployment and
+network access assumptions as all existing APIs. Phase 4 adds no scheduled work, queue, retries, alternate
+provider, availability-aware ranking behavior, or schema migration.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:

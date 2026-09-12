@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificationExecutor<Job> {
     @Query("""
@@ -16,4 +17,7 @@ interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificationExecut
             where job.status in :statuses
             """)
     List<Job> findAllWithSkillsForRanking(@Param("statuses") Collection<JobStatus> statuses);
+
+    @Query("select distinct job.id from Job job join job.skills where job.id in :jobIds")
+    Set<Long> findIdsWithSkills(@Param("jobIds") Collection<Long> jobIds);
 }
