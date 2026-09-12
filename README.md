@@ -2,7 +2,7 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment:
+The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment. JC-008 Phase 1 adds the persistence/domain foundation for future Lever discovery:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
@@ -41,7 +41,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
 | `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
-Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
+Authentication, operational job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 Phase 1 does not yet expose discovery APIs or perform network synchronization.
 
 ## Prerequisites
 
@@ -282,14 +282,31 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V1 | `V1__create_jobs.sql` | Jobs table matching the Week-1 schema, including `status` |
 | V2 | `V2__add_job_requirements.sql` | `min_years_experience` and `job_skills` |
 | V3 | `V3__add_resume_profiles.sql` | `resumes` and `candidate_profiles` |
+| V4 | `V4__add_job_discovery_domain.sql` | External job sources, listings, liveness, and synchronization-run state |
 
-A new empty database migrates V1 through V3 automatically on startup. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before V2/V3 can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V4 automatically on startup. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
 ```powershell
 docker compose exec postgres psql -U job_copilot -d job_copilot -c "SELECT installed_rank, version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
 ```
+
+## JC-008 Phase 1 discovery persistence
+
+Phase 1 models configured Lever sources, external listing identity and `LIVE`/`CLOSED` availability, and
+future synchronization-run state. Listing availability is separate from the user's `JobStatus`: for example,
+an applied job may later have a closed provider listing. Verification timestamps live on the external listing,
+so updating them does not change the job's `updatedAt` assessment metadata.
+
+PostgreSQL enforces source identity, per-source external posting identity, one external listing per local job,
+non-negative synchronization counters, safe bounded failure codes, and at most one `RUNNING` synchronization
+per source. Deleting a job cascades only its external-listing metadata; deleting a source with listing or run
+history is restricted.
+
+This phase contains no Lever HTTP client, provider URLs, mapping, digest calculation, reconciliation,
+requirement-extraction integration, discovery endpoint, ranking/assessment change, or scheduler. Real Lever
+network integration begins in JC-008 Phase 2.
 
 ## Resume upload and candidate profiles
 
