@@ -133,10 +133,14 @@ class DiscoveryPersistenceIntegrationTest {
         assertNotNull(listing.id());
         assertEquals(ListingAvailability.LIVE, listing.availability());
         assertEquals("sha256:abc", listing.providerContentDigest());
+        assertNull(listing.extractionFingerprint());
         assertEquals(expectedObserved, listing.firstSeenAt());
         assertEquals(JobStatus.DISCOVERED, jobs.getJob(jobResponse.id()).status());
         assertTrue(listings.findByJobSourceAndExternalJobId(source, "posting-1").isPresent());
         assertTrue(listings.findByJobId(jobResponse.id()).isPresent());
+        listing.recordSuccessfulExtraction("jc005-v1:sha256:" + "a".repeat(64));
+        listings.flush();
+        assertEquals("jc005-v1:sha256:" + "a".repeat(64), listing.extractionFingerprint());
         LocalDateTime persistedJobUpdatedAt = jdbc.queryForObject(
                 "SELECT updated_at FROM jobs WHERE id = ?", LocalDateTime.class, jobResponse.id());
 

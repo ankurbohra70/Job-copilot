@@ -33,3 +33,8 @@ job-intelligence:
     api-key: ${OPENAI_API_KEY:}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     connect-timeout: ${OPENAI_CONNECT_TIMEOUT:5s}
+job-discovery:
+  lever:
+    connect-timeout: ${LEVER_CONNECT_TIMEOUT:5s}
+    request-timeout: ${LEVER_REQUEST_TIMEOUT:20s}
+    max-response-bytes: ${LEVER_MAX_RESPONSE_BYTES:10485760}

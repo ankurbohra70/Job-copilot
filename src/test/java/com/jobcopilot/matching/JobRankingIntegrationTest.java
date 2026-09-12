@@ -139,7 +139,7 @@ class JobRankingIntegrationTest {
                         .match().overallScore()) > 0);
 
         assertEquals(tableCountBefore, publicTableCount());
-        assertEquals("4", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
+        assertEquals("5", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('job_rankings','match_results','matches')",
                 Integer.class));

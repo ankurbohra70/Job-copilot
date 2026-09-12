@@ -2,7 +2,7 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment. JC-008 Phase 1 adds the persistence/domain foundation for future Lever discovery:
+The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment. JC-008 adds the discovery persistence foundation and a transport-only Lever connector:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
@@ -41,7 +41,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
 | `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
-Authentication, operational job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 Phase 1 does not yet expose discovery APIs or perform network synchronization.
+Authentication, public discovery APIs, scheduled synchronization, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 Phase 3 provides an internal synchronous Lever synchronization service only.
 
 ## Prerequisites
 
@@ -304,9 +304,38 @@ non-negative synchronization counters, safe bounded failure codes, and at most o
 per source. Deleting a job cascades only its external-listing metadata; deleting a source with listing or run
 history is restricted.
 
-This phase contains no Lever HTTP client, provider URLs, mapping, digest calculation, reconciliation,
-requirement-extraction integration, discovery endpoint, ranking/assessment change, or scheduler. Real Lever
-network integration begins in JC-008 Phase 2.
+Phase 1 contains no network behavior, mapping, digest calculation, reconciliation, requirement-extraction
+integration, discovery endpoint, ranking/assessment change, or scheduler.
+
+## JC-008 Phase 2 Lever network boundary
+
+Phase 2 adds a synchronous, persistence-free Lever Postings API connector. One invocation accepts an already
+canonical Lever site key, a `GLOBAL` or `EU` region, and one `skip`/`limit` page. It performs one bounded request
+with redirects and retries disabled, then returns immutable provider data or a sanitized typed failure.
+
+The connector does not load or mutate discovery entities, traverse pages, reconcile listings, map canonical jobs,
+extract requirements, assess or rank jobs, schedule synchronization, or expose a controller. Unknown optional
+provider fields and vocabulary are tolerated, while posting identity, required URLs, JSON structure, and response
+memory are validated.
+
+Normal tests use a local HTTP server. The opt-in real-provider acceptance test calls the current Lever GLOBAL and
+EU demo feeds and is excluded from normal CI:
+
+```powershell
+.\mvnw.cmd "-Djobcopilot.lever.live=true" `
+  "-Dtest=LeverPostingGatewayLiveAcceptanceTest" test
+```
+
+## JC-008 Phase 3 Lever synchronization
+
+Phase 3 adds an internal synchronous synchronizer for one configured Lever source. Network requests occur outside
+database transactions; run start, each page, each requirement extraction, finalization, failure terminalization,
+and startup recovery use independent transactions. Presence from a valid page can remain after a later failure,
+while reconciliation and `lastSuccessfulSyncAt` advance only after a complete, duplicate-free traversal.
+
+The synchronizer preserves listing and canonical Job identity across refresh, closure, and reopening, and never
+changes the user-owned Job application status. It has no controller, scheduler, queue, background worker, generic
+provider abstraction, or matching/ranking redesign.
 
 ## Resume upload and candidate profiles
 
@@ -806,6 +835,9 @@ canonical-authority behavior is changed.
 | `OPENAI_API_KEY` | empty |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
 | `OPENAI_CONNECT_TIMEOUT` | `5s` |
+| `LEVER_CONNECT_TIMEOUT` | `5s` |
+| `LEVER_REQUEST_TIMEOUT` | `20s` |
+| `LEVER_MAX_RESPONSE_BYTES` | `10485760` |
 
 Hibernate `ddl-auto` is `validate`. Schema evolution is Flyway-only. If validation or migration fails, do not delete the Docker volume automatically: preserve it, inspect `flyway_schema_history`, and apply an explicit local recovery plan.
 

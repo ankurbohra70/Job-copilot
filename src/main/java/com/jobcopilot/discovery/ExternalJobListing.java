@@ -57,6 +57,9 @@ class ExternalJobListing {
     @Column(name = "apply_url", length = URL_MAX_LENGTH)
     private String applyUrl;
 
+    @Column(name = "extraction_fingerprint", length = DIGEST_MAX_LENGTH)
+    private String extractionFingerprint;
+
     @Column(name = "first_seen_at", nullable = false, updatable = false)
     private LocalDateTime firstSeenAt;
 
@@ -101,6 +104,30 @@ class ExternalJobListing {
         this.lastVerifiedAt = normalizedLastVerifiedAt;
     }
 
+    void recordLiveContent(String providerContentDigest, String hostedJobUrl, String applyUrl,
+            LocalDateTime observedAt) {
+        String normalizedDigest = requiredText(providerContentDigest, DIGEST_MAX_LENGTH,
+                "providerContentDigest");
+        String normalizedHostedUrl = optionalText(hostedJobUrl, URL_MAX_LENGTH, "hostedJobUrl");
+        String normalizedApplyUrl = optionalText(applyUrl, URL_MAX_LENGTH, "applyUrl");
+        LocalDateTime normalizedObservedAt = DiscoveryTimestamps.toDatabasePrecision(observedAt, "observedAt");
+        if (normalizedObservedAt.isBefore(firstSeenAt) || normalizedObservedAt.isBefore(lastSeenAt)
+                || normalizedObservedAt.isBefore(lastVerifiedAt)) {
+            throw new IllegalArgumentException("listing timestamps must not move backwards");
+        }
+        this.providerContentDigest = normalizedDigest;
+        this.hostedJobUrl = normalizedHostedUrl;
+        this.applyUrl = normalizedApplyUrl;
+        this.availability = ListingAvailability.LIVE;
+        this.lastSeenAt = normalizedObservedAt;
+        this.lastVerifiedAt = normalizedObservedAt;
+    }
+
+    void recordSuccessfulExtraction(String extractionFingerprint) {
+        String normalized = requiredText(extractionFingerprint, DIGEST_MAX_LENGTH, "extractionFingerprint");
+        this.extractionFingerprint = normalized;
+    }
+
     Long id() { return id; }
     JobSource jobSource() { return jobSource; }
     Job job() { return job; }
@@ -109,6 +136,7 @@ class ExternalJobListing {
     String providerContentDigest() { return providerContentDigest; }
     String hostedJobUrl() { return hostedJobUrl; }
     String applyUrl() { return applyUrl; }
+    String extractionFingerprint() { return extractionFingerprint; }
     LocalDateTime firstSeenAt() { return firstSeenAt; }
     LocalDateTime lastSeenAt() { return lastSeenAt; }
     LocalDateTime lastVerifiedAt() { return lastVerifiedAt; }

@@ -75,6 +75,29 @@ class DiscoveryDomainTest {
     }
 
     @Test
+    void listingLiveContentAndExtractionMutationsValidateBeforeChangingManagedState() {
+        ExternalJobListing listing = new ExternalJobListing(source(), mock(Job.class), "posting",
+                ListingAvailability.CLOSED, "old-digest", "https://old.example/job", null, START);
+        listing.recordSuccessfulExtraction("jc005-v1:sha256:" + "a".repeat(64));
+
+        listing.recordLiveContent("new-digest", "https://new.example/job", "https://new.example/apply",
+                START.plusMinutes(1));
+        assertEquals(ListingAvailability.LIVE, listing.availability());
+        assertEquals("new-digest", listing.providerContentDigest());
+        assertEquals("https://new.example/job", listing.hostedJobUrl());
+        assertEquals(START.plusMinutes(1), listing.lastSeenAt());
+        assertEquals("jc005-v1:sha256:" + "a".repeat(64), listing.extractionFingerprint());
+
+        assertThrows(IllegalArgumentException.class, () -> listing.recordLiveContent(
+                "rejected", " ", null, START.plusMinutes(2)));
+        assertEquals("new-digest", listing.providerContentDigest());
+        assertEquals("https://new.example/job", listing.hostedJobUrl());
+        assertEquals(START.plusMinutes(1), listing.lastSeenAt());
+        assertThrows(IllegalArgumentException.class, () -> listing.recordSuccessfulExtraction(" "));
+        assertEquals("jc005-v1:sha256:" + "a".repeat(64), listing.extractionFingerprint());
+    }
+
+    @Test
     void synchronizationRunHasControlledTerminalTransitionsAndSafeFailureCodes() {
         JobSourceSyncRun successful = new JobSourceSyncRun(source(), JobSourceSyncTrigger.MANUAL, START);
         JobSourceSyncCounters counters = new JobSourceSyncCounters(8, 2, 1, 4, 1, 0, 6, 2);

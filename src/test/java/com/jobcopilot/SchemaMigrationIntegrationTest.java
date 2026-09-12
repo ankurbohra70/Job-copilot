@@ -61,7 +61,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v3", null);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -81,6 +81,49 @@ class SchemaMigrationIntegrationTest {
                     assertEquals(1, rows.getInt(1));
                 }
             }
+        }
+    }
+
+    @Test void currentV4SchemaUpgradesWithNullableValidatedExtractionFingerprint() throws Exception {
+        flyway("upgrade_v4", "4").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v4.jobs(id, title, company, status, created_at, updated_at)
+                    VALUES (100, 'Existing', 'Company', 'DISCOVERED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v4.job_sources(id, provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    VALUES (100, 'LEVER', 'GLOBAL', 'existing', 'Company', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v4.external_job_listings(
+                        id, job_source_id, job_id, external_job_id, availability, provider_content_digest,
+                        first_seen_at, last_seen_at, last_verified_at)
+                    VALUES (100, 100, 100, 'posting', 'LIVE', 'digest', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v4", null);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery(
+                    "SELECT extraction_fingerprint FROM upgrade_v4.external_job_listings WHERE id = 100")) {
+                assertTrue(rows.next());
+                assertNull(rows.getString(1));
+            }
+            statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings
+                    SET extraction_fingerprint = 'jc005-v1:sha256:abc' WHERE id = 100
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings SET extraction_fingerprint = ' ' WHERE id = 100
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings SET extraction_fingerprint = E'\t' WHERE id = 100
+                    """));
         }
     }
 }
