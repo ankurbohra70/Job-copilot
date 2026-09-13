@@ -102,6 +102,41 @@ class LeverJobSourceSynchronizationIntegrationTest {
         assertEquals(JobStatus.DISCOVERED, jobs.getJob(jobId).status());
     }
 
+    @Test void refreshClosureAndReopeningPreserveEveryUserOwnedJobStatus() {
+        JobSource source = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
+                "all-statuses", "All Statuses Company", true));
+        LeverPosting[] original = java.util.Arrays.stream(JobStatus.values())
+                .map(status -> posting(status.name().toLowerCase(), "Required: Java"))
+                .toArray(LeverPosting[]::new);
+        respondWith(original);
+        synchronizer.synchronize(source.id(), JobSourceSyncTrigger.MANUAL);
+
+        java.util.Map<JobStatus, Long> jobIds = new java.util.EnumMap<>(JobStatus.class);
+        for (JobStatus status : JobStatus.values()) {
+            long jobId = jdbc.queryForObject("""
+                    SELECT job_id FROM external_job_listings
+                    WHERE job_source_id = ? AND external_job_id = ?
+                    """, Long.class, source.id(), status.name().toLowerCase());
+            jdbc.update("UPDATE jobs SET status = ? WHERE id = ?", status.name(), jobId);
+            jobIds.put(status, jobId);
+        }
+
+        LeverPosting[] refreshed = java.util.Arrays.stream(JobStatus.values())
+                .map(status -> posting(status.name().toLowerCase(), "Required: Java and PostgreSQL"))
+                .toArray(LeverPosting[]::new);
+        respondWith(refreshed);
+        synchronizer.synchronize(source.id(), JobSourceSyncTrigger.MANUAL);
+        assertStatuses(jobIds);
+
+        respondWith();
+        synchronizer.synchronize(source.id(), JobSourceSyncTrigger.MANUAL);
+        assertStatuses(jobIds);
+
+        respondWith(original);
+        synchronizer.synchronize(source.id(), JobSourceSyncTrigger.MANUAL);
+        assertStatuses(jobIds);
+    }
+
     @Test void networkCallRunsOutsideTransactionAndRequiresNewMethodsUseSpringProxy() {
         JobSource source = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
                 "example", "Example Company", true));
@@ -193,20 +228,25 @@ class LeverJobSourceSynchronizationIntegrationTest {
         assertNull(listing.extractionFingerprint());
     }
 
-    @Test void startConflictAndRestartRecoveryUseFrozenRunStates() {
+    @Test void startConflictAndExpiredLeaseRecoveryUseFrozenRunStates() {
         JobSource source = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
                 "example", "Example Company", true));
         var started = java.time.LocalDateTime.now().minusMinutes(1);
-        var first = transactions.start(source.id(), JobSourceSyncTrigger.MANUAL, started);
+        var first = transactions.startManual(source.id());
 
         assertThrows(JobSourceSyncAlreadyRunningException.class,
-                () -> transactions.start(source.id(), JobSourceSyncTrigger.SCHEDULED, started.plusSeconds(1)));
-        assertEquals(1, transactions.recover(java.time.LocalDateTime.now()));
+                () -> transactions.startManual(source.id()));
+        jdbc.update("UPDATE job_source_sync_runs SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = ?",
+                first.runId());
+        var replacement = transactions.startScheduled(source.id());
+        assertTrue(replacement.started());
+        assertTrue(replacement.recoveredExpiredRun());
         JobSourceSyncRun recovered = runs.findById(first.runId()).orElseThrow();
         assertEquals(JobSourceSyncStatus.ABANDONED, recovered.status());
-        assertEquals("APPLICATION_RESTARTED", recovered.failureCode());
-        assertDoesNotThrow(() -> transactions.start(source.id(), JobSourceSyncTrigger.SCHEDULED,
-                java.time.LocalDateTime.now()));
+        assertEquals("LEASE_EXPIRED", recovered.failureCode());
+        assertNull(recovered.leaseExpiresAt());
+        assertEquals(JobSourceSyncStatus.RUNNING,
+                runs.findById(replacement.start().runId()).orElseThrow().status());
     }
 
     @Test void concurrentSameSourceSynchronizationCleanlyRejectsOneCaller() throws Exception {
@@ -236,12 +276,41 @@ class LeverJobSourceSynchronizationIntegrationTest {
         }
     }
 
+    @Test void independentSourcesReachProviderConcurrently() throws Exception {
+        JobSource firstSource = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
+                "first", "First Company", true));
+        JobSource secondSource = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
+                "second", "Second Company", true));
+        CountDownLatch bothAtProvider = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+            bothAtProvider.countDown();
+            assertTrue(release.await(10, TimeUnit.SECONDS));
+            return new LeverFetchResult.Success(invocation.getArgument(0), invocation.getArgument(1),
+                    List.of(), Duration.ZERO);
+        }).when(gateway).fetchPage(any(), any());
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> synchronizer.synchronize(firstSource.id(), JobSourceSyncTrigger.MANUAL));
+            var second = executor.submit(() -> synchronizer.synchronize(secondSource.id(), JobSourceSyncTrigger.MANUAL));
+            assertTrue(bothAtProvider.await(10, TimeUnit.SECONDS));
+            release.countDown();
+            assertEquals(JobSourceSyncStatus.SUCCEEDED, first.get(10, TimeUnit.SECONDS).status());
+            assertEquals(JobSourceSyncStatus.SUCCEEDED, second.get(10, TimeUnit.SECONDS).status());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     @Test void finalizationRollbackDoesNotReportClosuresThatDidNotCommit() {
         JobSource source = sources.saveAndFlush(new JobSource(JobSourceProvider.LEVER, LeverRegion.GLOBAL,
                 "example", "Example Company", true));
         respondWith(posting("one", "Required: Java"));
         synchronizer.synchronize(source.id(), JobSourceSyncTrigger.MANUAL);
-        var forcedFuture = java.time.LocalDateTime.now().plusDays(1);
+        var forcedFuture = DiscoveryTimestamps.toDatabasePrecision(
+                java.time.LocalDateTime.now().plusDays(1), "forcedFuture");
         jdbc.update("UPDATE job_sources SET created_at = ?, last_successful_sync_at = ? WHERE id = ?",
                 java.sql.Timestamp.valueOf(forcedFuture), java.sql.Timestamp.valueOf(forcedFuture), source.id());
         respondWith();
@@ -263,6 +332,10 @@ class LeverJobSourceSynchronizationIntegrationTest {
         doAnswer(invocation -> new LeverFetchResult.Success(
                 invocation.getArgument(0), invocation.getArgument(1), List.of(postings), Duration.ZERO))
                 .when(gateway).fetchPage(any(), any());
+    }
+
+    private void assertStatuses(java.util.Map<JobStatus, Long> jobIds) {
+        jobIds.forEach((status, jobId) -> assertEquals(status, jobs.getJob(jobId).status()));
     }
 
     private static LeverPosting posting(String id, String description) {

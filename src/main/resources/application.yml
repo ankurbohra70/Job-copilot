@@ -34,6 +34,14 @@ job-intelligence:
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     connect-timeout: ${OPENAI_CONNECT_TIMEOUT:5s}
 job-discovery:
+  scheduling:
+    enabled: ${JOB_DISCOVERY_SCHEDULING_ENABLED:false}
+    tick-interval: ${JOB_DISCOVERY_SCHEDULING_TICK_INTERVAL:1m}
+    initial-delay: ${JOB_DISCOVERY_SCHEDULING_INITIAL_DELAY:30s}
+    sync-cadence: ${JOB_DISCOVERY_SCHEDULING_SYNC_CADENCE:1h}
+    concurrency: ${JOB_DISCOVERY_SCHEDULING_CONCURRENCY:2}
+    lease-timeout: ${JOB_DISCOVERY_SCHEDULING_LEASE_TIMEOUT:5m}
+    lease-heartbeat-interval: ${JOB_DISCOVERY_SCHEDULING_LEASE_HEARTBEAT_INTERVAL:30s}
   lever:
     connect-timeout: ${LEVER_CONNECT_TIMEOUT:5s}
     request-timeout: ${LEVER_REQUEST_TIMEOUT:20s}

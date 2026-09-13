@@ -4,9 +4,14 @@ import com.jobcopilot.job.DiscoveryJobWriter;
 import com.jobcopilot.job.Job;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,32 +22,98 @@ class DiscoverySyncTransactions {
     private final ExternalJobListingRepository listings;
     private final JobSourceSyncRunRepository runs;
     private final DiscoveryJobWriter jobs;
+    private final DiscoveryDatabaseTime databaseTime;
+    private final DiscoverySchedulingProperties scheduling;
+    private final NamedParameterJdbcTemplate jdbc;
 
     DiscoverySyncTransactions(JobSourceRepository sources, ExternalJobListingRepository listings,
-            JobSourceSyncRunRepository runs, DiscoveryJobWriter jobs) {
+            JobSourceSyncRunRepository runs, DiscoveryJobWriter jobs, DiscoveryDatabaseTime databaseTime,
+            DiscoverySchedulingProperties scheduling, NamedParameterJdbcTemplate jdbc) {
         this.sources = sources;
         this.listings = listings;
         this.runs = runs;
         this.jobs = jobs;
+        this.databaseTime = databaseTime;
+        this.scheduling = scheduling;
+        this.jdbc = jdbc;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    Start start(long sourceId, JobSourceSyncTrigger trigger, LocalDateTime startedAt) {
-        JobSource source = source(sourceId);
-        if (!source.enabled()) throw new IllegalStateException("Job source " + sourceId + " is disabled");
-        if (source.provider() != JobSourceProvider.LEVER) {
-            throw new IllegalArgumentException("Job source " + sourceId + " is not a Lever source");
+    Start startManual(long sourceId) {
+        JobSource source = lockedSource(sourceId);
+        validateSource(source, sourceId);
+        JobSourceSyncRun active = runs.findRunningForUpdate(sourceId).orElse(null);
+        LocalDateTime now = databaseTime.now();
+        if (active != null) {
+            if (active.leaseExpiresAt().isAfter(now)) throw new JobSourceSyncAlreadyRunningException(sourceId);
+            abandonExpired(active, now);
         }
-        if (runs.findByJobSourceAndStatus(source, JobSourceSyncStatus.RUNNING).isPresent()) {
-            throw new JobSourceSyncAlreadyRunningException(sourceId);
-        }
-        JobSourceSyncRun run = runs.saveAndFlush(new JobSourceSyncRun(source, trigger, startedAt));
-        return new Start(source, run.id());
+        return createRun(source, JobSourceSyncTrigger.MANUAL, now);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    PageResult persistPage(long sourceId, List<LeverMappedListing> mapped, LocalDateTime observedAt) {
-        JobSource source = source(sourceId);
+    ScheduledStartDecision startScheduled(long sourceId) {
+        JobSource source = sources.findLockedById(sourceId).orElse(null);
+        if (source == null || !source.enabled()) {
+            return new ScheduledStartDecision(null, ScheduledSkipReason.DISABLED_OR_MISSING, false);
+        }
+        validateProvider(source, sourceId);
+        JobSourceSyncRun active = runs.findRunningForUpdate(sourceId).orElse(null);
+        LocalDateTime now = databaseTime.now();
+        if (active != null) {
+            if (active.leaseExpiresAt().isAfter(now)) {
+                return new ScheduledStartDecision(null, ScheduledSkipReason.ACTIVE_RUN, false);
+            }
+            abandonExpired(active, now);
+            return new ScheduledStartDecision(createRun(source, JobSourceSyncTrigger.SCHEDULED, now),
+                    null, true);
+        }
+        List<JobSourceSyncRun> terminal = runs.findTerminalHistory(sourceId, PageRequest.of(0, 1));
+        if (!terminal.isEmpty() && terminal.getFirst().completedAt().plus(scheduling.syncCadence()).isAfter(now)) {
+            return new ScheduledStartDecision(null, ScheduledSkipReason.CADENCE, false);
+        }
+        return new ScheduledStartDecision(createRun(source, JobSourceSyncTrigger.SCHEDULED, now),
+                null, false);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void renewBeforeProvider(long sourceId, long runId) {
+        Authority authority = authority(sourceId, runId);
+        renewEstablished(authority.run());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    Set<Long> heartbeat(Collection<Long> runIds) {
+        if (runIds.isEmpty()) return Set.of();
+        String sql = """
+                with locked as materialized (
+                    select id
+                    from job_source_sync_runs
+                    where id in (:runIds) and status = 'RUNNING'
+                    for update skip locked
+                ), db_now as materialized (
+                    select clock_timestamp()::timestamp as value, count(*) as dependency
+                    from locked
+                )
+                update job_source_sync_runs run
+                set lease_expires_at = db_now.value + (:leaseMillis * interval '1 millisecond')
+                from locked, db_now
+                where run.id = locked.id
+                  and run.status = 'RUNNING'
+                  and run.lease_expires_at > db_now.value
+                returning run.id
+                """;
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("runIds", List.copyOf(runIds));
+        parameters.put("leaseMillis", scheduling.leaseTimeout().toMillis());
+        return Set.copyOf(jdbc.query(sql, parameters, (row, index) -> row.getLong(1)));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    PageResult persistPage(long sourceId, long runId, List<LeverMappedListing> mapped,
+            LocalDateTime observedAt) {
+        Authority authority = authority(sourceId, runId);
+        JobSource source = authority.run().jobSource();
         int created = 0;
         int updated = 0;
         int unchanged = 0;
@@ -74,28 +145,39 @@ class DiscoverySyncTransactions {
                     value.extractionFingerprint() != null && !current,
                     value.extractionFingerprint() != null && current && jobs.rankingReady(listing.job())));
         }
+        renewEstablished(authority.run());
         return new PageResult(created, updated, unchanged, reopened, List.copyOf(observations));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    boolean extract(long listingId, String expectedFingerprint) {
+    boolean extract(long sourceId, long runId, long listingId, String expectedFingerprint) {
+        Authority authority = authority(sourceId, runId);
         ExternalJobListing listing = listings.findById(listingId)
                 .orElseThrow(() -> new IllegalStateException("External listing disappeared during extraction"));
+        if (!listing.jobSource().id().equals(sourceId)) throw new JobSourceSyncLeaseLostException(sourceId, runId);
+        boolean ready;
         if (expectedFingerprint == null || Objects.equals(listing.extractionFingerprint(), expectedFingerprint)) {
-            return expectedFingerprint != null && jobs.rankingReady(listing.job());
+            ready = expectedFingerprint != null && jobs.rankingReady(listing.job());
+        } else {
+            DiscoveryJobWriter.ProcessingResult outcome = jobs.processRequirements(listing.job());
+            if (outcome instanceof DiscoveryJobWriter.ProcessingResult.Failed) {
+                ready = false;
+            } else {
+                var processed = (DiscoveryJobWriter.ProcessingResult.Processed) outcome;
+                listing.recordSuccessfulExtraction(expectedFingerprint);
+                listings.saveAndFlush(listing);
+                ready = processed.requirements().rankingReady();
+            }
         }
-        DiscoveryJobWriter.ProcessingResult outcome = jobs.processRequirements(listing.job());
-        if (outcome instanceof DiscoveryJobWriter.ProcessingResult.Failed) return false;
-        var processed = (DiscoveryJobWriter.ProcessingResult.Processed) outcome;
-        listing.recordSuccessfulExtraction(expectedFingerprint);
-        listings.saveAndFlush(listing);
-        return processed.requirements().rankingReady();
+        renewEstablished(authority.run());
+        return ready;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     JobSourceSyncResult succeed(long sourceId, long runId, Set<String> seenIds, LocalDateTime observedAt,
-            LocalDateTime completedAt, MutableCounters counters) {
-        JobSource source = source(sourceId);
+            MutableCounters counters) {
+        JobSource source = lockedSource(sourceId);
+        JobSourceSyncRun run = authority(sourceId, runId).run();
         int closed = 0;
         for (ExternalJobListing listing : listings.findByJobSource(source)) {
             if (seenIds.contains(listing.externalJobId())) continue;
@@ -103,7 +185,8 @@ class DiscoverySyncTransactions {
             listing.recordVerification(ListingAvailability.CLOSED, listing.lastSeenAt(), observedAt);
         }
         JobSourceSyncCounters finalCounters = counters.freeze(closed);
-        JobSourceSyncRun run = runningRun(runId);
+        LocalDateTime completedAt = databaseTime.now();
+        if (completedAt.isBefore(run.startedAt())) completedAt = run.startedAt();
         run.succeed(completedAt, finalCounters);
         source.recordSuccessfulSync(completedAt);
         runs.save(run);
@@ -112,9 +195,10 @@ class DiscoverySyncTransactions {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    JobSourceSyncResult fail(long runId, String failureCode, LocalDateTime completedAt,
-            MutableCounters counters) {
-        JobSourceSyncRun run = runningRun(runId);
+    JobSourceSyncResult fail(long sourceId, long runId, String failureCode, MutableCounters counters) {
+        lockedSource(sourceId);
+        JobSourceSyncRun run = authority(sourceId, runId).run();
+        LocalDateTime completedAt = databaseTime.now();
         if (completedAt.isBefore(run.startedAt())) completedAt = run.startedAt();
         JobSourceSyncCounters finalCounters = counters.freeze();
         run.fail(completedAt, failureCode, finalCounters);
@@ -122,29 +206,54 @@ class DiscoverySyncTransactions {
         return result(run, finalCounters);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    int recover(LocalDateTime completedAt) {
-        List<JobSourceSyncRun> stale = runs.findAllByStatus(JobSourceSyncStatus.RUNNING);
-        for (JobSourceSyncRun run : stale) {
-            LocalDateTime terminalAt = completedAt.isBefore(run.startedAt()) ? run.startedAt() : completedAt;
-            run.abandon(terminalAt, "APPLICATION_RESTARTED", JobSourceSyncCounters.zero());
-        }
-        runs.saveAll(stale);
-        return stale.size();
-    }
-
-    private JobSource source(long sourceId) {
-        return sources.findById(sourceId)
+    private JobSource lockedSource(long sourceId) {
+        return sources.findLockedById(sourceId)
                 .orElseThrow(() -> new IllegalArgumentException("Job source " + sourceId + " was not found"));
     }
 
-    private JobSourceSyncRun runningRun(long runId) {
-        JobSourceSyncRun run = runs.findById(runId)
-                .orElseThrow(() -> new IllegalStateException("Synchronization run " + runId + " was not found"));
-        if (run.status() != JobSourceSyncStatus.RUNNING) {
-            throw new IllegalStateException("Synchronization run " + runId + " is not running");
+    private void validateSource(JobSource source, long sourceId) {
+        if (!source.enabled()) throw new IllegalStateException("Job source " + sourceId + " is disabled");
+        validateProvider(source, sourceId);
+    }
+
+    private static void validateProvider(JobSource source, long sourceId) {
+        if (source.provider() != JobSourceProvider.LEVER) {
+            throw new IllegalArgumentException("Job source " + sourceId + " is not a Lever source");
         }
-        return run;
+    }
+
+    private Start createRun(JobSource source, JobSourceSyncTrigger trigger, LocalDateTime databaseNow) {
+        JobSourceSyncRun run = runs.saveAndFlush(new JobSourceSyncRun(source, trigger, databaseNow,
+                expiresAfter(databaseNow)));
+        return new Start(source, run.id());
+    }
+
+    private void abandonExpired(JobSourceSyncRun run, LocalDateTime now) {
+        LocalDateTime completedAt = now.isBefore(run.startedAt()) ? run.startedAt() : now;
+        run.abandon(completedAt, "LEASE_EXPIRED", JobSourceSyncCounters.zero());
+        runs.saveAndFlush(run);
+    }
+
+    private Authority authority(long sourceId, long runId) {
+        JobSourceSyncRun run = runs.findLockedById(runId)
+                .orElseThrow(() -> new JobSourceSyncLeaseLostException(sourceId, runId));
+        LocalDateTime now = databaseTime.now();
+        if (!run.jobSource().id().equals(sourceId) || run.status() != JobSourceSyncStatus.RUNNING
+                || run.leaseExpiresAt() == null || !run.leaseExpiresAt().isAfter(now)) {
+            throw new JobSourceSyncLeaseLostException(sourceId, runId);
+        }
+        return new Authority(run);
+    }
+
+    /** The caller already holds this exact run row from a valid authority check. */
+    private void renewEstablished(JobSourceSyncRun run) {
+        LocalDateTime expiresAt = expiresAfter(databaseTime.now());
+        if (expiresAt.isAfter(run.leaseExpiresAt())) run.renewLease(expiresAt);
+        runs.saveAndFlush(run);
+    }
+
+    private LocalDateTime expiresAfter(LocalDateTime now) {
+        return DiscoveryTimestamps.toDatabasePrecision(now.plus(scheduling.leaseTimeout()), "leaseExpiresAt");
     }
 
     private static JobSourceSyncResult result(JobSourceSyncRun run, JobSourceSyncCounters counters) {
@@ -154,9 +263,13 @@ class DiscoverySyncTransactions {
     }
 
     record Start(JobSource source, long runId) {}
+    enum ScheduledSkipReason { DISABLED_OR_MISSING, ACTIVE_RUN, CADENCE }
+    record ScheduledStartDecision(Start start, ScheduledSkipReason skipReason, boolean recoveredExpiredRun) {
+        boolean started() { return start != null; }
+    }
+    private record Authority(JobSourceSyncRun run) {}
     record Observation(long listingId, String fingerprint, boolean extractionNeeded, boolean rankingReady) {}
-    record PageResult(int created, int updated, int unchanged, int reopened,
-            List<Observation> observations) {}
+    record PageResult(int created, int updated, int unchanged, int reopened, List<Observation> observations) {}
 
     static final class MutableCounters {
         int discovered;

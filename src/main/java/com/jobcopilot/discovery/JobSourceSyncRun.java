@@ -45,6 +45,9 @@ class JobSourceSyncRun {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    @Column(name = "lease_expires_at")
+    private LocalDateTime leaseExpiresAt;
+
     @Column(name = "discovered_count", nullable = false)
     private int discoveredCount;
 
@@ -73,11 +76,31 @@ class JobSourceSyncRun {
     }
 
     JobSourceSyncRun(JobSource jobSource, JobSourceSyncTrigger trigger, LocalDateTime startedAt) {
+        this(jobSource, trigger, startedAt, startedAt.plusMinutes(5));
+    }
+
+    JobSourceSyncRun(JobSource jobSource, JobSourceSyncTrigger trigger, LocalDateTime startedAt,
+            LocalDateTime leaseExpiresAt) {
         this.jobSource = Objects.requireNonNull(jobSource, "jobSource is required");
         this.trigger = Objects.requireNonNull(trigger, "trigger is required");
         this.startedAt = DiscoveryTimestamps.toDatabasePrecision(startedAt, "startedAt");
+        this.leaseExpiresAt = DiscoveryTimestamps.toDatabasePrecision(leaseExpiresAt, "leaseExpiresAt");
+        if (!this.leaseExpiresAt.isAfter(this.startedAt)) {
+            throw new IllegalArgumentException("leaseExpiresAt must be after startedAt");
+        }
         this.status = JobSourceSyncStatus.RUNNING;
         apply(JobSourceSyncCounters.zero());
+    }
+
+    void renewLease(LocalDateTime leaseExpiresAt) {
+        if (status != JobSourceSyncStatus.RUNNING) {
+            throw new IllegalStateException("only a running synchronization can renew its lease");
+        }
+        LocalDateTime normalized = DiscoveryTimestamps.toDatabasePrecision(leaseExpiresAt, "leaseExpiresAt");
+        if (!normalized.isAfter(this.leaseExpiresAt)) {
+            throw new IllegalArgumentException("leaseExpiresAt must move forward");
+        }
+        this.leaseExpiresAt = normalized;
     }
 
     void succeed(LocalDateTime completedAt, JobSourceSyncCounters counters) {
@@ -105,6 +128,7 @@ class JobSourceSyncRun {
         this.status = terminalStatus;
         this.completedAt = normalizedCompletedAt;
         this.failureCode = failureCode;
+        this.leaseExpiresAt = null;
         apply(counters);
     }
 
@@ -134,6 +158,7 @@ class JobSourceSyncRun {
     String failureCode() { return failureCode; }
     LocalDateTime startedAt() { return startedAt; }
     LocalDateTime completedAt() { return completedAt; }
+    LocalDateTime leaseExpiresAt() { return leaseExpiresAt; }
     JobSourceSyncCounters counters() {
         return new JobSourceSyncCounters(discoveredCount, createdCount, updatedCount, unchangedCount,
                 closedCount, reopenedCount, rankingReadyCount, unreadyCount);

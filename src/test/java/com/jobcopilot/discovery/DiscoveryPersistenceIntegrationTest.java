@@ -414,8 +414,8 @@ class DiscoveryPersistenceIntegrationTest {
         JobSource source = sources.saveAndFlush(source("site", true));
 
         jdbc.update("""
-                INSERT INTO job_source_sync_runs(job_source_id, trigger, status, started_at)
-                VALUES (?, 'MANUAL', 'RUNNING', CURRENT_TIMESTAMP)
+                INSERT INTO job_source_sync_runs(job_source_id, trigger, status, started_at, lease_expires_at)
+                VALUES (?, 'MANUAL', 'RUNNING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '5 minutes')
                 """, source.id());
         jdbc.update("""
                 INSERT INTO job_source_sync_runs(job_source_id, trigger, status, started_at, completed_at)

@@ -2,7 +2,7 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment. JC-008 adds the discovery persistence foundation and a transport-only Lever connector:
+The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, JC-006 on-demand single-job assessment, and JC-008 manual and scheduled Lever discovery:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
@@ -41,7 +41,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
 | `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
-Authentication, public discovery APIs, scheduled synchronization, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 Phase 3 provides an internal synchronous Lever synchronization service only.
+Authentication, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 provides source/listing APIs, synchronous manual synchronization, and opt-in scheduled synchronization.
 
 ## Prerequisites
 
@@ -283,8 +283,10 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V2 | `V2__add_job_requirements.sql` | `min_years_experience` and `job_skills` |
 | V3 | `V3__add_resume_profiles.sql` | `resumes` and `candidate_profiles` |
 | V4 | `V4__add_job_discovery_domain.sql` | External job sources, listings, liveness, and synchronization-run state |
+| V5 | `V5__add_listing_extraction_fingerprint.sql` | Version-aware deterministic extraction currency |
+| V6 | `V6__add_sync_run_lease.sql` | Lease-based run ownership and crash recovery |
 
-A new empty database migrates V1 through V4 automatically on startup. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V6 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
@@ -329,8 +331,8 @@ EU demo feeds and is excluded from normal CI:
 ## JC-008 Phase 3 Lever synchronization
 
 Phase 3 adds an internal synchronous synchronizer for one configured Lever source. Network requests occur outside
-database transactions; run start, each page, each requirement extraction, finalization, failure terminalization,
-and startup recovery use independent transactions. Presence from a valid page can remain after a later failure,
+database transactions; run start, each page, each requirement extraction, finalization, and failure terminalization
+use independent transactions. Presence from a valid page can remain after a later failure,
 while reconciliation and `lastSuccessfulSyncAt` advance only after a complete, duplicate-free traversal.
 
 The synchronizer preserves listing and canonical Job identity across refresh, closure, and reopening, and never
@@ -831,8 +833,39 @@ terminal `FAILED` run and a safe failure code; local missing, disabled, or confl
 transactions and transaction-free provider calls remain authoritative.
 
 There is no application authentication or authorization layer. These endpoints have the same deployment and
-network access assumptions as all existing APIs. Phase 4 adds no scheduled work, queue, retries, alternate
-provider, availability-aware ranking behavior, or schema migration.
+network access assumptions as all existing APIs. Phase 4 itself adds no scheduled work, retries, alternate
+provider, or availability-aware ranking behavior.
+
+## JC-008 Phase 5 (scheduled synchronization and hardening)
+
+Phase 5 adds opt-in scheduled synchronization while retaining `LeverJobSourceSynchronizer` as the single manual
+and scheduled traversal authority. One lightweight tick per application instance polls history-derived eligible
+sources. Accepted work runs on a dedicated fixed-size executor with a synchronous handoff and no accumulating
+queue. `JOB_DISCOVERY_SCHEDULING_CONCURRENCY` is a per-process limit, not a fleet-wide cap. An executor rejection
+creates no run and leaves the source eligible for a later tick.
+
+Scheduling is disabled by default. When enabled, a never-run source is immediately eligible; otherwise the most
+recent terminal attempt, including a manual attempt, starts the global cadence. An unexpired active run is
+skipped. An expired active run is abandoned as `LEASE_EXPIRED` and replaced immediately without waiting for the
+cadence. There are no immediate provider retries: provider and traversal failures are audited and the next normal
+eligible cycle is the next attempt.
+
+Every `RUNNING` run has a database-time lease. Locally executing manual and scheduled runs are registered with an
+independent heartbeat that remains active even when scheduled polling is disabled. Page writes, extraction,
+reconciliation, counters, and terminalization lock and validate the exact run ID before canonical mutation, then
+renew from PostgreSQL time before commit where the run remains active. A crashed process therefore stops renewing;
+a future claimant can recover its expired run without a blanket application-startup sweep. Starting another
+healthy application instance cannot abandon an unexpired run.
+
+After a genuine stall, two processes may repeat a provider read. This is intentional: the stale process is fenced
+from subsequent canonical writes, so duplicate provider reads do not become duplicate canonical mutation. Logs
+carry safe source/run/trigger, admission or eligibility outcome, terminal status, failure classification, duration,
+and counters; provider bodies and sensitive URL query data are not logged.
+
+Terminal adversarial QA is a separate release gate after implementation verification. It must challenge migration,
+multi-instance same-source races, independent-source progress, crash recovery, provider failure, partial traversal,
+closure/reopening, extraction preservation, transaction boundaries, REST compatibility, and scheduler-disabled
+behavior before JC-008 is frozen.
 
 ## Configuration
 
@@ -856,6 +889,13 @@ provider, availability-aware ranking behavior, or schema migration.
 | `LEVER_CONNECT_TIMEOUT` | `5s` |
 | `LEVER_REQUEST_TIMEOUT` | `20s` |
 | `LEVER_MAX_RESPONSE_BYTES` | `10485760` |
+| `JOB_DISCOVERY_SCHEDULING_ENABLED` | `false` |
+| `JOB_DISCOVERY_SCHEDULING_TICK_INTERVAL` | `1m` |
+| `JOB_DISCOVERY_SCHEDULING_INITIAL_DELAY` | `30s` |
+| `JOB_DISCOVERY_SCHEDULING_SYNC_CADENCE` | `1h` |
+| `JOB_DISCOVERY_SCHEDULING_CONCURRENCY` | `2` per process |
+| `JOB_DISCOVERY_SCHEDULING_LEASE_TIMEOUT` | `5m` |
+| `JOB_DISCOVERY_SCHEDULING_LEASE_HEARTBEAT_INTERVAL` | `30s` |
 
 Hibernate `ddl-auto` is `validate`. Schema evolution is Flyway-only. If validation or migration fails, do not delete the Docker volume automatically: preserve it, inspect `flyway_schema_history`, and apply an explicit local recovery plan.
 

@@ -219,7 +219,7 @@ class JobSourceApiIntegrationTest {
 
         JobSource enabled = sources.findByProviderAndRegionAndSourceKey(JobSourceProvider.LEVER,
                 com.jobcopilot.discovery.lever.LeverRegion.GLOBAL, "race").orElseThrow();
-        var started = transactions.start(enabled.id(), JobSourceSyncTrigger.MANUAL, java.time.LocalDateTime.now());
+        var started = transactions.startManual(enabled.id());
         mvc.perform(post("/api/job-sources/{id}/sync", enabled.id())).andExpect(status().isConflict());
         JobSourceSyncRun run = runs.findById(started.runId()).orElseThrow();
         run.fail(java.time.LocalDateTime.now().plusSeconds(1), "PRIVATE_INTERNAL_CODE", JobSourceSyncCounters.zero());
@@ -228,6 +228,18 @@ class JobSourceApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.failureCode").value("SYNC_FAILED"));
         mvc.perform(get("/api/job-sources/{id}/sync-runs", enabled.id()).queryParam("status", "FAILED"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+
+        var stale = transactions.startManual(enabled.id());
+        jdbc.update("""
+                UPDATE job_source_sync_runs
+                SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = ?
+                """, stale.runId());
+        transactions.startManual(enabled.id());
+        mvc.perform(get("/api/job-sources/{id}/sync-runs/{runId}", enabled.id(), stale.runId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ABANDONED"))
+                .andExpect(jsonPath("$.failureCode").value("LEASE_EXPIRED"))
+                .andExpect(jsonPath("$.leaseExpiresAt").doesNotExist());
     }
 
     private Object attemptCreate(com.jobcopilot.discovery.dto.CreateJobSourceRequest request) {

@@ -99,13 +99,18 @@ class DiscoveryDomainTest {
 
     @Test
     void synchronizationRunHasControlledTerminalTransitionsAndSafeFailureCodes() {
-        JobSourceSyncRun successful = new JobSourceSyncRun(source(), JobSourceSyncTrigger.MANUAL, START);
+        JobSourceSyncRun successful = new JobSourceSyncRun(
+                source(), JobSourceSyncTrigger.MANUAL, START, START.plusMinutes(5));
+        assertEquals(START.plusMinutes(5), successful.leaseExpiresAt());
+        successful.renewLease(START.plusMinutes(6));
         JobSourceSyncCounters counters = new JobSourceSyncCounters(8, 2, 1, 4, 1, 0, 6, 2);
         successful.succeed(START.plusMinutes(1), counters);
 
         assertEquals(JobSourceSyncStatus.SUCCEEDED, successful.status());
         assertEquals(counters, successful.counters());
         assertNull(successful.failureCode());
+        assertNull(successful.leaseExpiresAt());
+        assertThrows(IllegalStateException.class, () -> successful.renewLease(START.plusMinutes(7)));
         assertThrows(IllegalStateException.class,
                 () -> successful.fail(START.plusMinutes(2), "PROVIDER_FAILED", counters));
 
@@ -113,6 +118,7 @@ class DiscoveryDomainTest {
         failed.fail(START.plusMinutes(1), "PROVIDER_FAILED", JobSourceSyncCounters.zero());
         assertEquals(JobSourceSyncStatus.FAILED, failed.status());
         assertEquals("PROVIDER_FAILED", failed.failureCode());
+        assertNull(failed.leaseExpiresAt());
 
         JobSourceSyncRun invalid = new JobSourceSyncRun(source(), JobSourceSyncTrigger.MANUAL, START);
         assertThrows(IllegalArgumentException.class,
@@ -124,6 +130,10 @@ class DiscoveryDomainTest {
         assertEquals(JobSourceSyncCounters.zero(), invalid.counters());
         assertThrows(IllegalArgumentException.class,
                 () -> new JobSourceSyncCounters(-1, 0, 0, 0, 0, 0, 0, 0));
+        assertThrows(NullPointerException.class, () -> new JobSourceSyncRun(
+                source(), JobSourceSyncTrigger.MANUAL, START, null));
+        assertThrows(IllegalArgumentException.class, () -> new JobSourceSyncRun(
+                source(), JobSourceSyncTrigger.MANUAL, START, START));
     }
 
     private static JobSource source() {
