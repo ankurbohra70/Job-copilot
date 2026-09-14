@@ -54,4 +54,17 @@ interface ExternalJobListingRepository extends JpaRepository<ExternalJobListing,
             """)
     Optional<ExternalJobListingReadProjection> findReadProjection(
             @Param("sourceId") long sourceId, @Param("listingId") long listingId);
+
+    @Query("""
+            select new com.jobcopilot.discovery.ExternalJobListingReadProjection(
+                listing.id, source.id, listing.externalJobId, listing.availability,
+                job.id, job.status, job.description, job.minYearsExperience,
+                listing.hostedJobUrl, listing.applyUrl, listing.extractionFingerprint,
+                listing.firstSeenAt, listing.lastSeenAt, listing.lastVerifiedAt)
+            from ExternalJobListing listing
+            join listing.jobSource source
+            join listing.job job
+            where job.id = :jobId
+            """)
+    Optional<ExternalJobListingReadProjection> findReadProjectionByJobId(@Param("jobId") long jobId);
 }

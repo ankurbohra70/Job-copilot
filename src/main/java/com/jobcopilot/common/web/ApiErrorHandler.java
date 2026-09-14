@@ -81,9 +81,14 @@ public class ApiErrorHandler {
         return error(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
-    @ExceptionHandler({ResumeNotFoundException.class, CandidateProfileNotFoundException.class})
+    @ExceptionHandler({ResumeNotFoundException.class, CandidateProfileNotFoundException.class,
+            PreferenceNotFoundException.class, ResumeRouteNotFoundException.class})
     public ResponseEntity<ApiErrorResponse> handleResumeNotFound(RuntimeException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+    @ExceptionHandler(ResumeRouteConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleResumeRouteConflict(ResumeRouteConflictException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
     }
     @ExceptionHandler({InvalidResumeFileException.class, MissingServletRequestPartException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidResume(Exception exception) {
@@ -136,6 +141,11 @@ public class ApiErrorHandler {
 
     @ExceptionHandler({InvalidJobQueryException.class, InvalidJobRankingQueryException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidJobQuery(RuntimeException exception) {
+        return badRequest(exception.getMessage());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidDomainValue(IllegalArgumentException exception) {
         return badRequest(exception.getMessage());
     }
 

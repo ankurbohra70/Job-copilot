@@ -158,7 +158,7 @@ class JobAssessmentIntegrationTest {
         assertEquals(profileBefore, resumes.getProfile(profileId));
         assertEquals(tablesBefore, publicTableCount());
         assertEquals(rowsBefore, sourceRows());
-        assertEquals("6", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
+        assertEquals("7", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('job_assessments','assessments')",
                 Integer.class));

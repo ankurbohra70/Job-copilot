@@ -13,4 +13,9 @@ public final class ResumeExceptions {
     public static class EmptyResumeTextException extends RuntimeException { public EmptyResumeTextException() { super("No meaningful text could be extracted; upload a text-based PDF meeting the configured minimum text length"); } }
     public static class ResumeNotFoundException extends RuntimeException { public ResumeNotFoundException(Long id) { super("Resume " + id + " was not found"); } }
     public static class CandidateProfileNotFoundException extends RuntimeException { public CandidateProfileNotFoundException(Long id) { super("Candidate profile " + id + " was not found"); } }
+    public static class PreferenceNotFoundException extends RuntimeException { public PreferenceNotFoundException(Long id) { super("Candidate profile " + id + " has no job search preference"); } }
+    public static class ResumeRouteNotFoundException extends RuntimeException { public ResumeRouteNotFoundException(Long id) { super("Resume route " + id + " was not found"); } }
+    public static class ResumeRouteConflictException extends RuntimeException {
+        public ResumeRouteConflictException() { super("A resume route already exists for this profile, strategy, and route selector"); }
+    }
 }

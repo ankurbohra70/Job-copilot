@@ -867,6 +867,52 @@ multi-instance same-source races, independent-source progress, crash recovery, p
 closure/reopening, extraction preservation, transaction boundaries, REST compatibility, and scheduler-disabled
 behavior before JC-008 is frozen.
 
+## Candidate application readiness foundations
+
+The application layer now remains separate from job lifecycle, matching, and ranking. Candidate profiles contain
+typed authoritative contact and candidate-owned facts. Work authorization, sponsorship, relocation, notice period,
+and compensation remain nullable or explicitly `UNKNOWN`; neither resume parsing nor an LLM fills them silently.
+The existing resume-derived `profile` JSON remains the backward-compatible deterministic matching snapshot.
+
+Search policy is stored separately in `job_search_preferences` and normalized child tables for target/excluded
+roles, locations, and accepted work arrangements. Resume routing references an existing immutable resume record,
+records a `VOLUME` or `PRECISION` strategy, and requires an explicit approved route before readiness can be `READY`.
+The referenced source resume is never overwritten.
+
+Both candidate-profile and job-search-preference `PUT` operations are full replacements. Omitted candidate facts
+are cleared, and omitted sensitive tri-state facts return to `UNKNOWN`; preference child collections are replaced,
+trimmed, and deduplicated case-insensitively. They are never merged implicitly.
+
+Minimal API surface:
+
+- `POST /api/candidate-profiles` and `PUT /api/candidate-profiles/{id}` create or replace candidate facts.
+- `GET|PUT /api/candidate-profiles/{id}/job-search-preference` reads or replaces search policy.
+- `GET|POST /api/candidate-profiles/{id}/resume-routes` lists or creates traceable routes.
+- `GET /api/jobs/{id}/application-decision?candidateProfileId={profileId}` returns an explainable deterministic action.
+- `GET /api/jobs/{id}/application-readiness?candidateProfileId={profileId}` returns the overall readiness state and
+  structured checks.
+
+Decision policy `application-decision-v1` maps the existing matcher without recalculating it: not recommended jobs
+are `SKIP`, weak matches are `SAVE`, good matches are `APPLY_VOLUME`, and strong matches are `APPLY_PRECISION`.
+Missing work-authorization, sponsorship, or search-policy facts yield `NEEDS_USER` only for decisions that would
+otherwise apply; `SKIP` and `SAVE` do not demand application-only facts. Readiness additionally requires a live
+JC-008 listing within the configured `freshnessDays` window, a hierarchical HTTP(S) application URL with a host,
+a permissible job lifecycle state, candidate name/email, compatible/known authorization facts, and an approved
+route to a validated resume record. Compensation is checked when configured but is not a blocker while job-side
+compensation input requirements are unmodeled. Any hard failure yields `NOT_READY`; otherwise a required
+candidate-owned unknown yields `NEEDS_USER`; only all applicable passes yield `READY`. Multi-query readiness reads
+use one read-only PostgreSQL repeatable-read snapshot.
+
+Location matching is deliberately conservative: configured locations match the complete provider location or an
+exact comma/semicolon/parenthesized component; substring collisions do not count. Work-authorization jurisdiction
+and job-side sponsorship capability are not yet modeled, so ambiguous cases remain user-owned rather than inferred.
+Resume routes prove an approved immutable database record and reject obviously invalid legacy records. Raw PDF bytes
+are still not retained, so a later application-execution increment must add a durable artifact/re-upload gate before
+claiming that a routed resume can be uploaded automatically.
+
+No application, application attempt, answer bank, generated wording, browser automation, or submission state is
+created by this increment.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:

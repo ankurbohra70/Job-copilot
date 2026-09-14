@@ -26,5 +26,11 @@ class Resume {
     int pageCount() { return pageCount; }
     String extractorVersion() { return extractorVersion; }
     LocalDateTime createdAt() { return createdAt; }
+    boolean usableRouteSource() {
+        return fileName != null && !fileName.isBlank() && fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf")
+                && "application/pdf".equalsIgnoreCase(mediaType) && sizeBytes > 0 && pageCount > 0
+                && extractedText != null && !extractedText.isBlank()
+                && extractorVersion != null && !extractorVersion.isBlank();
+    }
 }
 

@@ -36,6 +36,29 @@ class ResumeControllerTest {
         mvc.perform(get("/api/resumes/9")).andExpect(status().isNotFound());
         mvc.perform(get("/api/candidate-profiles/9")).andExpect(status().isNotFound());
     }
+    @Test void createsAndUpdatesAuthoritativeCandidateFactsWithoutRequiringGuessedValues() throws Exception {
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"UNKNOWN","sponsorshipRequired":"UNKNOWN"}
+                """)).andExpect(status().isCreated());
+        mvc.perform(put("/api/candidate-profiles/7").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"YES","sponsorshipRequired":"NO",
+                 "compensationCurrency":"INR","minimumCompensation":1000000}
+                """)).andExpect(status().isOk());
+        verify(persistence).createProfile(any());
+        verify(persistence).updateProfile(eq(7L), any());
+    }
+    @Test void rejectsOverflowingCompensationAndInvalidSensitiveEnumBeforePersistence() throws Exception {
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","minimumCompensation":1000000000000.00,
+                 "compensationCurrency":"INR"}
+                """)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.minimumCompensation").exists());
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"MAYBE"}
+                """)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request body is malformed or contains an invalid value"));
+        verifyNoInteractions(persistence);
+    }
     static Stream<Object[]> errors() {
         return Stream.of(new Object[]{new InvalidResumeFileException("empty"),400},
                 new Object[]{new UnsupportedResumeTypeException(),415},new Object[]{new ResumeTooLargeException(),413},

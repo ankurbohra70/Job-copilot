@@ -61,7 +61,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v3", null);
-        assertEquals(3, upgraded.migrate().migrationsExecuted);
+        assertEquals(4, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -105,7 +105,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v4", null);
-        assertEquals(2, upgraded.migrate().migrationsExecuted);
+        assertEquals(3, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -184,7 +184,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v5", null);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -238,6 +238,127 @@ class SchemaMigrationIntegrationTest {
                         job_source_id, trigger, status, started_at, lease_expires_at)
                     VALUES (100, 'MANUAL', 'RUNNING', CURRENT_TIMESTAMP,
                             CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+                    """));
+        }
+    }
+
+    @Test void populatedV6SchemaAddsTypedCandidateAndReadinessTablesWithoutFabricatingFacts() throws Exception {
+        flyway("upgrade_v6", "6").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resumes(id, file_name, size_bytes, media_type, extracted_text,
+                        page_count, extractor_version, created_at)
+                    VALUES (10, 'existing.pdf', 100, 'application/pdf', 'existing text', 1, 'pdfbox-v1', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.candidate_profiles(id, resume_id, profile_data, schema_version,
+                        parser_version, vocabulary_version, assessed_on, created_at)
+                    VALUES (10, 10, '{}'::jsonb, 'v1', 'rules-v1', 'v1', CURRENT_DATE, CURRENT_TIMESTAMP)
+                    """);
+        }
+        var upgraded = flyway("upgrade_v6", null);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT resume_id, work_authorization, sponsorship_required, minimum_compensation,
+                           updated_at IS NOT NULL FROM upgrade_v6.candidate_profiles WHERE id = 10
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals(10, rows.getLong("resume_id"));
+                assertEquals("UNKNOWN", rows.getString("work_authorization"));
+                assertEquals("UNKNOWN", rows.getString("sponsorship_required"));
+                assertNull(rows.getBigDecimal("minimum_compensation"));
+                assertTrue(rows.getBoolean(5));
+            }
+            for (String table : new String[]{"job_search_preferences", "job_search_preference_roles",
+                    "job_search_preference_locations", "job_search_preference_work_arrangements", "resume_routes"}) {
+                try (var rows = statement.executeQuery("""
+                        SELECT COUNT(*) FROM information_schema.tables
+                        WHERE table_schema = 'upgrade_v6' AND table_name = '%s'
+                        """.formatted(table))) {
+                    assertTrue(rows.next()); assertEquals(1, rows.getInt(1));
+                }
+            }
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET work_authorization = 'MAYBE' WHERE id = 10
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preferences(
+                        id, candidate_profile_id, default_resume_strategy, created_at, updated_at)
+                    VALUES (10, 10, 'VOLUME', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'TARGET', 'Engineer')
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'EXCLUDED', 'engineer')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'TARGET', ' Analyst ')
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, 'Bengaluru')
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, 'bengaluru')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, ' Mumbai ')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET full_name = ' Candidate ' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET full_name = E'Candidate\nInjected' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET email = 'not-an-email' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = NULL, minimum_compensation = 100 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = 'INR', minimum_compensation = NULL,
+                        desired_compensation = NULL WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = 'INR', minimum_compensation = 200,
+                        desired_compensation = 100 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET notice_period_days = -1 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, ' Default ', true, CURRENT_TIMESTAMP)
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Draft', false, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Approved', true, CURRENT_TIMESTAMP)
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Second approved', true, CURRENT_TIMESTAMP)
                     """));
         }
     }
