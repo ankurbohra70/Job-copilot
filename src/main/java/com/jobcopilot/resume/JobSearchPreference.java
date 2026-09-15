@@ -16,10 +16,15 @@ class JobSearchPreference {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @OneToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "candidate_profile_id", nullable = false, unique = true)
     private CandidateProfile candidateProfile;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private ResumeStrategy defaultResumeStrategy;
+    @Enumerated(EnumType.STRING) @Column(length = 16) private ResumeStrategy defaultResumeStrategy;
     @Column(precision = 4, scale = 2) private BigDecimal minimumExperienceToleranceYears;
     @Column(precision = 4, scale = 2) private BigDecimal maximumExperienceToleranceYears;
     private Integer freshnessDays;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16)
+    private CandidateFactState relocationWilling = CandidateFactState.UNKNOWN;
+    @Column(length = 3) private String compensationCurrency;
+    @Column(precision = 14, scale = 2) private BigDecimal minimumCompensation;
+    @Column(precision = 14, scale = 2) private BigDecimal desiredCompensation;
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "job_search_preference_roles", joinColumns = @JoinColumn(name = "preference_id"))
     private Set<PreferenceRole> roles = new LinkedHashSet<>();
@@ -45,6 +50,20 @@ class JobSearchPreference {
                 && minimumExperienceToleranceYears.compareTo(maximumExperienceToleranceYears) > 0)
             throw new IllegalArgumentException("minimum experience tolerance must not exceed maximum");
         freshnessDays = data.freshnessDays();
+        relocationWilling = java.util.Objects.requireNonNullElse(data.relocationWilling(), CandidateFactState.UNKNOWN);
+        compensationCurrency = data.compensationCurrency() == null ? null
+                : data.compensationCurrency().strip().toUpperCase(java.util.Locale.ROOT);
+        minimumCompensation = money(data.minimumCompensation());
+        desiredCompensation = money(data.desiredCompensation());
+        if ((minimumCompensation != null || desiredCompensation != null) && compensationCurrency == null)
+            throw new IllegalArgumentException("compensationCurrency is required when compensation is provided");
+        if (compensationCurrency != null && minimumCompensation == null && desiredCompensation == null)
+            throw new IllegalArgumentException("compensation requires a minimum or desired amount");
+        if (compensationCurrency != null && !compensationCurrency.matches("[A-Z]{3}"))
+            throw new IllegalArgumentException("compensationCurrency must be a three-letter code");
+        if (minimumCompensation != null && desiredCompensation != null
+                && desiredCompensation.compareTo(minimumCompensation) < 0)
+            throw new IllegalArgumentException("desiredCompensation must not be below minimumCompensation");
         java.util.List<String> targets = canonicalValues(data.targetRoles());
         java.util.List<String> exclusions = canonicalValues(data.excludedRoles());
         java.util.Set<String> targetKeys = targets.stream().map(JobSearchPreference::key).collect(java.util.stream.Collectors.toSet());
@@ -62,7 +81,8 @@ class JobSearchPreference {
                 roles.stream().filter(r -> r.kind() == RoleKind.TARGET).map(PreferenceRole::roleTitle).sorted().toList(),
                 roles.stream().filter(r -> r.kind() == RoleKind.EXCLUDED).map(PreferenceRole::roleTitle).sorted().toList(),
                 preferredLocations.stream().sorted().toList(), Set.copyOf(acceptableWorkArrangements),
-                minimumExperienceToleranceYears, maximumExperienceToleranceYears, freshnessDays);
+                minimumExperienceToleranceYears, maximumExperienceToleranceYears, freshnessDays,
+                relocationWilling, compensationCurrency, minimumCompensation, desiredCompensation);
     }
     Long id() { return id; }
     LocalDateTime createdAt() { return createdAt; }
@@ -85,6 +105,12 @@ class JobSearchPreference {
         if (value == null) return null;
         if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(80)) > 0 || value.scale() > 2)
             throw new IllegalArgumentException("experience tolerance must be between 0 and 80 with at most two decimals");
+        return value.setScale(2);
+    }
+    private static BigDecimal money(BigDecimal value) {
+        if (value == null) return null;
+        if (value.signum() < 0 || value.scale() > 2)
+            throw new IllegalArgumentException("compensation must be non-negative with at most two decimals");
         return value.setScale(2);
     }
 }

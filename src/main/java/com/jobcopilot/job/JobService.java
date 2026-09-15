@@ -90,6 +90,14 @@ public class JobService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<JobRankingSnapshot> rankingSnapshotsByIds(Set<Long> jobIds) {
+        if (jobIds.isEmpty()) return List.of();
+        return jobRepository.findAllWithSkillsForRankingByIdIn(jobIds).stream()
+                .map(JobService::toRankingSnapshot)
+                .toList();
+    }
+
     private static List<String> normalizedSkills(List<String> skills) {
         if (skills == null) return List.of();
         return skills.stream().map(MatchingVocabulary.standard()::canonical).peek(skill -> {

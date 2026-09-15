@@ -109,6 +109,19 @@ class JobServiceTest {
     }
 
     @Test
+    void rankingSnapshotIdReadIsEmptySafeAndDoesNotLoadUnrelatedStatuses() {
+        Job included = persistedJob(7L, JobStatus.DISCOVERED);
+        when(jobRepository.findAllWithSkillsForRankingByIdIn(Set.of(7L))).thenReturn(List.of(included));
+
+        assertEquals(List.of(7L), jobService.rankingSnapshotsByIds(Set.of(7L)).stream()
+                .map(value -> value.matching().id()).toList());
+        verify(jobRepository).findAllWithSkillsForRankingByIdIn(Set.of(7L));
+        verify(jobRepository, never()).findAllWithSkillsForRanking(any());
+
+        assertTrue(jobService.rankingSnapshotsByIds(Set.of()).isEmpty());
+    }
+
+    @Test
     void updateMutatesExistingJobAndPreservesIdentityStatusAndCreatedAt() {
         Job existing = persistedJob(7L, JobStatus.APPLIED);
         LocalDateTime createdAt = existing.getCreatedAt();

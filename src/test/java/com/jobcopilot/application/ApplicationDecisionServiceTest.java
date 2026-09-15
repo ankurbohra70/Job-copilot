@@ -101,7 +101,7 @@ class ApplicationDecisionServiceTest {
     }
     private static CandidateProfileFacts facts(CandidateFactState auth, CandidateFactState sponsorship) {
         return new CandidateProfileFacts("Candidate", "c@example.com", null, "Bengaluru", "Engineer", 60,
-                auth, sponsorship, CandidateFactState.UNKNOWN, null, "INR", new BigDecimal("100"), null);
+                auth, sponsorship, null);
     }
     private static JobSearchPreferenceData preference() {
         return new JobSearchPreferenceData(ResumeStrategy.VOLUME, List.of("Engineer"), List.of(),

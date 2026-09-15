@@ -286,7 +286,7 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V5 | `V5__add_listing_extraction_fingerprint.sql` | Version-aware deterministic extraction currency |
 | V6 | `V6__add_sync_run_lease.sql` | Lease-based run ownership and crash recovery |
 
-A new empty database migrates V1 through V6 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V8 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, and V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
@@ -869,13 +869,27 @@ behavior before JC-008 is frozen.
 
 ## Candidate application readiness foundations
 
-The application layer now remains separate from job lifecycle, matching, and ranking. Candidate profiles contain
-typed authoritative contact and candidate-owned facts. Work authorization, sponsorship, relocation, notice period,
-and compensation remain nullable or explicitly `UNKNOWN`; neither resume parsing nor an LLM fills them silently.
-The existing resume-derived `profile` JSON remains the backward-compatible deterministic matching snapshot.
+The application layer remains separate from job lifecycle, matching, and ranking. Candidate profiles contain
+typed authoritative contact, capability, and candidate-owned facts. Work authorization and sponsorship remain
+explicitly `UNKNOWN` until supplied; neither resume parsing nor an LLM fills them silently. Resume uploads create
+`DRAFT` profiles at revision 1. `PUT /api/candidate-profiles/{id}/confirmation` performs a complete validated
+replacement of structured profile data and candidate facts using `expectedRevision`, transitions the profile to
+`CONFIRMED`, and rejects stale writes. Existing profiles are backfilled as confirmed, while explicit manual
+profiles remain confirmed on creation.
+
+Matching accepts only a confirmed `CandidateMatchingSnapshot` built from structured profile data. Skills,
+keywords, observed roles, and total experience are read directly from that snapshot; stored resume text and
+provenance evidence cannot create a match. The former relevant-experience overlay has been removed, so
+`CandidateProfileData.totalExperienceMonths` is the sole scoring experience value. Profile revision is returned
+with assessment, ranking, and opportunity results so callers can identify the evaluated authority.
+Complete profile replacements are normalized before revision comparison and are bounded to 5,000 aggregate
+collection items and 500,000 aggregate text characters to prevent nested-list amplification.
 
 Search policy is stored separately in `job_search_preferences` and normalized child tables for target/excluded
-roles, locations, and accepted work arrangements. Resume routing references an existing immutable resume record,
+roles, locations, and accepted work arrangements. Relocation willingness and compensation expectations are also
+search intent and are authoritative only there; V8 preserves and moves pre-existing V7 values. Resume extraction
+is routed through `CandidateProfileExtractor`, whose only production implementation is deterministic, and never
+creates search preferences. Resume routing references an existing immutable resume record,
 records a `VOLUME` or `PRECISION` strategy, and requires an explicit approved route before readiness can be `READY`.
 The referenced source resume is never overwritten.
 
@@ -886,11 +900,16 @@ trimmed, and deduplicated case-insensitively. They are never merged implicitly.
 Minimal API surface:
 
 - `POST /api/candidate-profiles` and `PUT /api/candidate-profiles/{id}` create or replace candidate facts.
+- `PUT /api/candidate-profiles/{id}/confirmation` confirms or fully corrects structured profile authority with optimistic concurrency.
 - `GET|PUT /api/candidate-profiles/{id}/job-search-preference` reads or replaces search policy.
 - `GET|POST /api/candidate-profiles/{id}/resume-routes` lists or creates traceable routes.
 - `GET /api/jobs/{id}/application-decision?candidateProfileId={profileId}` returns an explainable deterministic action.
 - `GET /api/jobs/{id}/application-readiness?candidateProfileId={profileId}` returns the overall readiness state and
   structured checks.
+- `GET /api/candidate-profiles/{id}/opportunities` ranks provider-neutral JC-008 `LIVE`, extraction-current jobs in
+  `DISCOVERED` or `SHORTLISTED` state and projects the existing decision and readiness results without persisting
+  computed output. It accepts ranking-compatible `minScore`, `recommendation`, `page`, and `size` filters plus an
+  optional `readiness` filter; job status is fixed by live-opportunity eligibility.
 
 Decision policy `application-decision-v1` maps the existing matcher without recalculating it: not recommended jobs
 are `SKIP`, weak matches are `SAVE`, good matches are `APPLY_VOLUME`, and strong matches are `APPLY_PRECISION`.
@@ -912,6 +931,27 @@ claiming that a routed resume can be uploaded automatically.
 
 No application, application attempt, answer bank, generated wording, browser automation, or submission state is
 created by this increment.
+
+## JC-009 offline evaluation
+
+JC-009 includes a deliberately small, test-only evaluation foundation under
+`src/test/java/com/jobcopilot/evaluation` with human-reviewed, versioned labels in
+`src/test/resources/jc009/evaluation/v1`. It executes the released deterministic candidate extractor, JC-005
+job-requirement extractor, JC-006 matcher/ranking order, and existing application decision/readiness policies.
+It reports through assertions: exact field and state accuracy; set precision, recall, and F1; exact and
+within-tolerance experience accuracy; false-positive and abstention rates; score/recommendation parity and
+boundary errors; Precision@K and nDCG@K; per-state confusion counts; and false-skip/false-apply rates.
+
+Run only the JC-009 offline evaluation with:
+
+```powershell
+./mvnw.cmd "-Dtest=Jc009*EvaluationTest,Jc009EvaluationFoundationTest" test
+```
+
+The fixtures and metrics are quality gates, not tuning inputs. They require no credentials, network, database,
+model call, scheduler, or production API. They do not persist results or affect production extraction, matching,
+ranking, decisions, or readiness. An LLM-as-judge is not part of this harness; any future qualitative judge must
+remain optional and non-authoritative.
 
 ## Configuration
 

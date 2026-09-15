@@ -46,6 +46,24 @@ public class ResumeRouteService {
         return routes.findFirstByCandidateProfileIdAndStrategyAndApprovedTrueAndIsDefaultTrue(profileId, strategy)
                 .filter(ResumeRoute::usable).map(ResumeRoute::snapshot).orElse(null);
     }
+    @Transactional(readOnly = true)
+    public List<ResumeRouteSnapshot> resolutionCandidates(Long profileId) {
+        if (!profiles.existsById(profileId)) throw new CandidateProfileNotFoundException(profileId);
+        return routes.findByCandidateProfileIdOrderById(profileId).stream()
+                .filter(ResumeRoute::usable).map(ResumeRoute::snapshot).toList();
+    }
+    public ResumeRouteSnapshot resolve(List<ResumeRouteSnapshot> candidates, ResumeStrategy strategy, String jobTitle) {
+        if (jobTitle != null) {
+            ResumeRouteSnapshot exact = candidates.stream()
+                    .filter(route -> route.approved() && route.strategy() == strategy && !route.defaultRoute())
+                    .filter(route -> containsRoleFamily(jobTitle, route.roleFamily()))
+                    .findFirst().orElse(null);
+            if (exact != null) return exact;
+        }
+        return candidates.stream()
+                .filter(route -> route.approved() && route.strategy() == strategy && route.defaultRoute())
+                .findFirst().orElse(null);
+    }
     private OptionalRoute exactRoute(Long profileId, ResumeStrategy strategy, String jobTitle) {
         if (jobTitle == null) return new OptionalRoute(null);
         return routes.findByCandidateProfileIdOrderById(profileId).stream()

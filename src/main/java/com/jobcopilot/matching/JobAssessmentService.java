@@ -31,6 +31,7 @@ public class JobAssessmentService {
                 MatchingVocabulary.standard().version(),
                 profile.parserVersion(),
                 profile.assessedOn(),
+                profile.revision(),
                 job.updatedAt(),
                 result
         );

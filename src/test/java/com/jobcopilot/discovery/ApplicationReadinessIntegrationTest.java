@@ -53,8 +53,19 @@ class ApplicationReadinessIntegrationTest {
         long profileId = id(mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
                 {"fullName":"Candidate","email":"candidate@example.com","location":"Bengaluru",
                  "totalRelevantExperienceMonths":60,"workAuthorization":"YES",
-                 "sponsorshipRequired":"NO","relocationWilling":"UNKNOWN"}
+                 "sponsorshipRequired":"NO"}
                 """)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mvc.perform(put("/api/candidate-profiles/{id}/confirmation", profileId)
+                        .contentType("application/json").content("""
+                                {"expectedRevision":1,"profile":{"skills":[],"totalExperienceMonths":60,
+                                 "observedExperienceMonths":60,"experienceAssessment":"KNOWN",
+                                 "workExperience":[],"education":[],"projects":[],"keywords":[],
+                                 "roleCategories":[],"evidence":[],"warnings":[]},
+                                 "facts":{"fullName":"Candidate","email":"candidate@example.com",
+                                 "location":"Bengaluru","totalRelevantExperienceMonths":60,
+                                 "workAuthorization":"YES","sponsorshipRequired":"NO"}}
+                                """))
+                .andExpect(status().isOk());
         mvc.perform(put("/api/candidate-profiles/{id}/job-search-preference", profileId)
                         .contentType("application/json").content("""
                                 {"defaultResumeStrategy":"PRECISION","targetRoles":["Backend Engineer"],

@@ -9,6 +9,7 @@ public record JobRankingResponse(
         String vocabularyVersion,
         String profileParserVersion,
         LocalDate profileAssessedOn,
+        long profileRevision,
         int evaluatedJobCount,
         int computableJobCount,
         int unassessedJobCount,
@@ -33,6 +34,7 @@ public record JobRankingResponse(
             String vocabularyVersion,
             String profileParserVersion,
             LocalDate profileAssessedOn,
+            long profileRevision,
             int evaluatedJobCount,
             int computableJobCount,
             int filteredJobCount,
@@ -52,6 +54,7 @@ public record JobRankingResponse(
                 vocabularyVersion,
                 profileParserVersion,
                 profileAssessedOn,
+                profileRevision,
                 evaluatedJobCount,
                 computableJobCount,
                 unassessedJobCount,
@@ -65,5 +68,14 @@ public record JobRankingResponse(
                 rankedJobs,
                 unassessedJobs
         );
+    }
+
+    public static JobRankingResponse of(Long candidateProfileId, String algorithmVersion,
+            String vocabularyVersion, String profileParserVersion, LocalDate profileAssessedOn,
+            int evaluatedJobCount, int computableJobCount, int filteredJobCount, int page, int size,
+            List<RankedJobResponse> rankedJobs, List<UnassessedJobResponse> unassessedJobs) {
+        return of(candidateProfileId, algorithmVersion, vocabularyVersion, profileParserVersion,
+                profileAssessedOn, 0, evaluatedJobCount, computableJobCount, filteredJobCount,
+                page, size, rankedJobs, unassessedJobs);
     }
 }

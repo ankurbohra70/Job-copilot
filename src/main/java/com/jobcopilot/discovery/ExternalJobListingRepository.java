@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
+import com.jobcopilot.job.JobStatus;
 
 interface ExternalJobListingRepository extends JpaRepository<ExternalJobListing, Long> {
     Optional<ExternalJobListing> findByJobSourceAndExternalJobId(JobSource jobSource, String externalJobId);
@@ -67,4 +69,19 @@ interface ExternalJobListingRepository extends JpaRepository<ExternalJobListing,
             where job.id = :jobId
             """)
     Optional<ExternalJobListingReadProjection> findReadProjectionByJobId(@Param("jobId") long jobId);
+
+    @Query("""
+            select new com.jobcopilot.discovery.ExternalJobListingReadProjection(
+                listing.id, source.id, listing.externalJobId, listing.availability,
+                job.id, job.status, job.description, job.minYearsExperience,
+                listing.hostedJobUrl, listing.applyUrl, listing.extractionFingerprint,
+                listing.firstSeenAt, listing.lastSeenAt, listing.lastVerifiedAt)
+            from ExternalJobListing listing
+            join listing.jobSource source
+            join listing.job job
+            where listing.availability = com.jobcopilot.discovery.ListingAvailability.LIVE
+              and job.status in :statuses
+            """)
+    List<ExternalJobListingReadProjection> findLiveOpportunityProjections(
+            @Param("statuses") Collection<JobStatus> statuses);
 }

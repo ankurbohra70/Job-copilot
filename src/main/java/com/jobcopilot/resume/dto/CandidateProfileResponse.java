@@ -6,10 +6,12 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import com.jobcopilot.resume.CandidateProfileFacts;
+import com.jobcopilot.resume.CandidateProfileStatus;
 
 public record CandidateProfileResponse(Long id, Long resumeId, CandidateProfileData profile,
         CandidateProfileFacts facts, String schemaVersion, String parserVersion, String vocabularyVersion,
-        LocalDate assessedOn, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        LocalDate assessedOn, CandidateProfileStatus status, long revision, LocalDateTime confirmedAt,
+        LocalDateTime createdAt, LocalDateTime updatedAt) {
     @com.fasterxml.jackson.annotation.JsonProperty
     public BigDecimal totalYearsExperience() {
         return profile.totalExperienceMonths() == null ? null : BigDecimal.valueOf(profile.totalExperienceMonths())

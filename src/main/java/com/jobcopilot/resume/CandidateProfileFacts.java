@@ -1,7 +1,5 @@
 package com.jobcopilot.resume;
 
-import java.math.BigDecimal;
-
 public record CandidateProfileFacts(
         String fullName,
         String email,
@@ -11,9 +9,5 @@ public record CandidateProfileFacts(
         Integer totalRelevantExperienceMonths,
         CandidateFactState workAuthorization,
         CandidateFactState sponsorshipRequired,
-        CandidateFactState relocationWilling,
-        Integer noticePeriodDays,
-        String compensationCurrency,
-        BigDecimal minimumCompensation,
-        BigDecimal desiredCompensation) {
+        Integer noticePeriodDays) {
 }

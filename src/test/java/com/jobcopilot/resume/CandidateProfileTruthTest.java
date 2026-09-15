@@ -6,24 +6,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CandidateProfileTruthTest {
-    @Test void unknownSensitiveFactsAndCompensationRemainUnknown() {
+    @Test void unknownSensitiveCandidateFactsRemainUnknown() {
         CandidateProfile profile = new CandidateProfile(emptyData(), LocalDate.of(2026, 9, 13));
         profile.replaceFacts(new CandidateProfileFacts("Candidate", null, null, null, null, null,
-                null, null, null, null, null, null, null));
+                null, null, null));
 
         assertEquals(CandidateFactState.UNKNOWN, profile.facts().workAuthorization());
         assertEquals(CandidateFactState.UNKNOWN, profile.facts().sponsorshipRequired());
-        assertEquals(CandidateFactState.UNKNOWN, profile.facts().relocationWilling());
-        assertNull(profile.facts().minimumCompensation());
-        assertNull(profile.facts().desiredCompensation());
-        assertNull(profile.facts().compensationCurrency());
     }
 
-    @Test void currencyWithoutAnAmountIsRejected() {
+    @Test void directDomainUpdatesEnforceFactBoundsAndEmail() {
         CandidateProfile profile = new CandidateProfile(emptyData(), LocalDate.of(2026, 9, 13));
-        CandidateProfileFacts invalid = new CandidateProfileFacts("Candidate", null, null, null, null, null,
-                null, null, null, null, "INR", null, null);
-        assertThrows(IllegalArgumentException.class, () -> profile.replaceFacts(invalid));
+        assertThrows(IllegalArgumentException.class, () -> profile.replaceFacts(
+                new CandidateProfileFacts("Candidate", "not-an-email", null, null, null,
+                        null, null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> profile.replaceFacts(
+                new CandidateProfileFacts("Candidate", null, null, null, null,
+                        961, null, null, null)));
     }
 
     private static CandidateProfileData emptyData() {

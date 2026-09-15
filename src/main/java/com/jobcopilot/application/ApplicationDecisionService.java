@@ -32,10 +32,15 @@ public class ApplicationDecisionService {
     ApplicationDecisionResult decide(Long jobId, Long profileId, MatchResponse match) {
         CandidateProfileFacts facts = profiles.facts(profileId);
         JobSearchPreferenceData preference = preferences.data(profileId);
+        return decide(jobId, profileId, match, facts, preference,
+                jobs.applicationSnapshot(jobId).matching().title());
+    }
+    ApplicationDecisionResult decide(Long jobId, Long profileId, MatchResponse match,
+            CandidateProfileFacts facts, JobSearchPreferenceData preference, String jobTitle) {
         List<String> reasons = new ArrayList<>();
         ApplicationDecision base = ApplicationDecisionPolicy.from(match.recommendation());
         if (base == ApplicationDecision.SKIP) reasons.add("MATCH_NOT_RECOMMENDED");
-        if (preference != null && excluded(preference.excludedRoles(), jobs.applicationSnapshot(jobId).matching().title())) {
+        if (preference != null && excluded(preference.excludedRoles(), jobTitle)) {
             base = ApplicationDecision.SKIP; reasons.add("EXCLUDED_ROLE");
         }
         if (base == ApplicationDecision.APPLY_VOLUME && preference != null
@@ -44,12 +49,14 @@ public class ApplicationDecisionService {
             reasons.add("DEFAULT_PRECISION_STRATEGY");
         }
         boolean missing = facts.workAuthorization() == CandidateFactState.UNKNOWN
-                || facts.sponsorshipRequired() == CandidateFactState.UNKNOWN || preference == null;
+                || facts.sponsorshipRequired() == CandidateFactState.UNKNOWN
+                || preference == null || preference.defaultResumeStrategy() == null;
         if ((base == ApplicationDecision.APPLY_VOLUME || base == ApplicationDecision.APPLY_PRECISION) && missing) {
             base = ApplicationDecision.NEEDS_USER;
             if (facts.workAuthorization() == CandidateFactState.UNKNOWN) reasons.add("WORK_AUTHORIZATION_UNKNOWN");
             if (facts.sponsorshipRequired() == CandidateFactState.UNKNOWN) reasons.add("SPONSORSHIP_UNKNOWN");
-            if (preference == null) reasons.add("SEARCH_PREFERENCE_MISSING");
+            if (preference == null || preference.defaultResumeStrategy() == null)
+                reasons.add("SEARCH_PREFERENCE_MISSING");
         }
         if (reasons.isEmpty()) reasons.add(switch (base) {
             case APPLY_PRECISION -> "STRONG_MATCH_PRECISION_ROUTE";

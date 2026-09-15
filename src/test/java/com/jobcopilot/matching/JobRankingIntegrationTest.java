@@ -139,7 +139,7 @@ class JobRankingIntegrationTest {
                         .match().overallScore()) > 0);
 
         assertEquals(tableCountBefore, publicTableCount());
-        assertEquals("7", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
+        assertEquals("8", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('job_rankings','match_results','matches')",
                 Integer.class));
@@ -217,8 +217,8 @@ class JobRankingIntegrationTest {
         try {
             var small = rank(profileId);
             assertEquals(1, small.evaluatedJobCount());
-            assertEquals(3, statistics.getPrepareStatementCount(),
-                    "one job should use candidate, resume, and one jobs-with-skills read");
+            assertEquals(2, statistics.getPrepareStatementCount(),
+                    "one job should use one confirmed-candidate and one jobs-with-skills read");
 
             for (int index = 1; index < 42; index++) {
                 job(profileId, "Backend Engineer " + index, "smoke-" + index, statuses[index % statuses.length],
@@ -235,8 +235,8 @@ class JobRankingIntegrationTest {
             assertEquals(0, ranking.unassessedJobCount());
             assertEquals(24, ranking.pageResultCount());
             assertEquals(1, ranking.totalPages());
-            assertEquals(3, statistics.getPrepareStatementCount(),
-                    "candidate, resume text, and status-eligible jobs with skills should be the only reads");
+            assertEquals(2, statistics.getPrepareStatementCount(),
+                    "confirmed candidate and status-eligible jobs with skills should be the only reads");
             assertEquals(0, statistics.getEntityInsertCount());
             assertEquals(0, statistics.getEntityUpdateCount());
             assertEquals(JobRankingQuery.DEFAULT_STATUSES,
@@ -253,8 +253,8 @@ class JobRankingIntegrationTest {
                     null, null, List.of("0"), List.of("100")));
             assertEquals(42, allStatuses.evaluatedJobCount());
             assertEquals(42, allStatuses.computableJobCount());
-            assertEquals(3, statistics.getPrepareStatementCount(),
-                    "all 42 jobs must still use candidate, resume, and one jobs-with-skills read");
+            assertEquals(2, statistics.getPrepareStatementCount(),
+                    "all 42 jobs must still use one confirmed-candidate and one jobs-with-skills read");
         } finally {
             statistics.setStatisticsEnabled(false);
         }

@@ -61,7 +61,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v3", null);
-        assertEquals(4, upgraded.migrate().migrationsExecuted);
+        assertEquals(5, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -105,7 +105,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v4", null);
-        assertEquals(3, upgraded.migrate().migrationsExecuted);
+        assertEquals(4, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -184,7 +184,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v5", null);
-        assertEquals(2, upgraded.migrate().migrationsExecuted);
+        assertEquals(3, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -258,7 +258,7 @@ class SchemaMigrationIntegrationTest {
                     """);
         }
         var upgraded = flyway("upgrade_v6", null);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -360,6 +360,59 @@ class SchemaMigrationIntegrationTest {
                         is_default, variant_label, approved, created_at)
                     VALUES (10, 10, 'VOLUME', NULL, true, 'Second approved', true, CURRENT_TIMESTAMP)
                     """));
+        }
+    }
+
+    @Test void populatedV7SchemaBackfillsConfirmedLifecycleAndMovesSearchIntentWithoutLoss() throws Exception {
+        flyway("upgrade_v7", "7").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v7.candidate_profiles(
+                        id, profile_data, schema_version, parser_version, vocabulary_version,
+                        assessed_on, created_at, updated_at, relocation_willing,
+                        compensation_currency, minimum_compensation, desired_compensation)
+                    VALUES (20, '{}'::jsonb, 'v1', 'manual-v1', 'v1', CURRENT_DATE,
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00',
+                        'YES', 'INR', 100, 150)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v7.job_search_preferences(
+                        id, candidate_profile_id, default_resume_strategy, created_at, updated_at)
+                    VALUES (20, 20, 'PRECISION', TIMESTAMP '2025-01-01 00:00:00',
+                        TIMESTAMP '2025-02-01 00:00:00')
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v7", null);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT profile.status, profile.revision, profile.confirmed_at IS NOT NULL,
+                           profile.relocation_willing, profile.compensation_currency,
+                           preference.relocation_willing, preference.compensation_currency,
+                           preference.minimum_compensation, preference.desired_compensation,
+                           preference.updated_at
+                    FROM upgrade_v7.candidate_profiles profile
+                    JOIN upgrade_v7.job_search_preferences preference
+                      ON preference.candidate_profile_id = profile.id
+                    WHERE profile.id = 20
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("CONFIRMED", rows.getString(1));
+                assertEquals(1, rows.getLong(2));
+                assertTrue(rows.getBoolean(3));
+                assertEquals("UNKNOWN", rows.getString(4));
+                assertNull(rows.getString(5));
+                assertEquals("YES", rows.getString(6));
+                assertEquals("INR", rows.getString(7));
+                assertEquals(0, new java.math.BigDecimal("100.00").compareTo(rows.getBigDecimal(8)));
+                assertEquals(0, new java.math.BigDecimal("150.00").compareTo(rows.getBigDecimal(9)));
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(10).toLocalDateTime());
+            }
         }
     }
 }

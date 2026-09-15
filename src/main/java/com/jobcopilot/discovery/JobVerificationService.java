@@ -19,6 +19,9 @@ public class JobVerificationService {
                         p.applyUrl(), extractionState(p), p.lastVerifiedAt()))
                 .orElse(null);
     }
+    boolean isCurrent(ExternalJobListingReadProjection row) {
+        return extractionState(row) == ExtractionState.CURRENT;
+    }
     private ExtractionState extractionState(ExternalJobListingReadProjection row) {
         if (row.description() == null || row.description().isBlank()) return ExtractionState.UNAVAILABLE;
         if (row.extractionFingerprint() == null) return ExtractionState.PENDING;

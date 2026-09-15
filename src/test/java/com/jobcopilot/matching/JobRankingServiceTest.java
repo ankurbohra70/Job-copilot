@@ -578,7 +578,7 @@ class JobRankingServiceTest {
     private static CandidateMatchingSnapshot candidate() {
         String text = "Java";
         var parsed = new DeterministicProfileParser().parse(text, LocalDate.of(2026, 9, 7));
-        return new CandidateMatchingSnapshot(2L, parsed, text, "persisted-parser", "stored-vocab", LocalDate.of(2026, 9, 6));
+        return new CandidateMatchingSnapshot(2L, parsed, "persisted-parser", "stored-vocab", LocalDate.of(2026, 9, 6), 3);
     }
 
     private static MatchResult result(String score, Recommendation recommendation) {

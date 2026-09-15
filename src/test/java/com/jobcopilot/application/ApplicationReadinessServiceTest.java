@@ -71,8 +71,7 @@ class ApplicationReadinessServiceTest {
     }
     @Test void missingRequiredIdentityNeedsUser() {
         CandidateProfileFacts incomplete = new CandidateProfileFacts(null, null, null, "Bengaluru", "Engineer", 60,
-                CandidateFactState.YES, CandidateFactState.NO, CandidateFactState.UNKNOWN, null,
-                "INR", new BigDecimal("100"), null);
+                CandidateFactState.YES, CandidateFactState.NO, null);
         when(profiles.facts(1L)).thenReturn(incomplete);
         var result = service.evaluate(9L, 1L);
         assertEquals(ApplicationReadiness.NEEDS_USER, result.readiness());
@@ -82,7 +81,7 @@ class ApplicationReadinessServiceTest {
     @Test void unknownCompensationDoesNotBlockWhenJobDoesNotRequireIt() {
         CandidateProfileFacts withoutCompensation = new CandidateProfileFacts("Candidate", "c@example.com", null,
                 "Bengaluru", "Engineer", 60, CandidateFactState.YES, CandidateFactState.NO,
-                CandidateFactState.UNKNOWN, null, null, null, null);
+                null);
         when(profiles.facts(1L)).thenReturn(withoutCompensation);
         var result = service.evaluate(9L, 1L);
         assertEquals(ApplicationReadiness.READY, result.readiness());
@@ -114,7 +113,7 @@ class ApplicationReadinessServiceTest {
     @Test void sponsorshipRequirementNeedsUserBecauseJobSupportIsUnknown() {
         CandidateProfileFacts sponsorshipRequired = new CandidateProfileFacts("Candidate", "c@example.com", null,
                 "Bengaluru", "Engineer", 60, CandidateFactState.YES, CandidateFactState.YES,
-                CandidateFactState.UNKNOWN, null, null, null, null);
+                null);
         when(profiles.facts(1L)).thenReturn(sponsorshipRequired);
         assertEquals(ApplicationReadiness.NEEDS_USER, service.evaluate(9L, 1L).readiness());
     }
@@ -171,7 +170,7 @@ class ApplicationReadinessServiceTest {
     }
     private static CandidateProfileFacts facts(CandidateFactState auth) {
         return new CandidateProfileFacts("Candidate", "c@example.com", null, "Bengaluru", "Engineer", 60,
-                auth, CandidateFactState.NO, CandidateFactState.UNKNOWN, null, "INR", new BigDecimal("100"), null);
+                auth, CandidateFactState.NO, null);
     }
     private static JobSearchPreferenceData preference() {
         return new JobSearchPreferenceData(ResumeStrategy.VOLUME, List.of("Engineer"), List.of(),

@@ -19,5 +19,10 @@ public class CandidateProfileController {
             @Valid @RequestBody com.jobcopilot.resume.dto.CandidateProfileRequest request) {
         return persistence.updateProfile(id, request);
     }
+    @PutMapping("/{id}/confirmation")
+    public CandidateProfileResponse confirm(@PathVariable Long id,
+            @Valid @RequestBody com.jobcopilot.resume.dto.CandidateProfileConfirmationRequest request) {
+        return persistence.confirm(id, request);
+    }
 }
 

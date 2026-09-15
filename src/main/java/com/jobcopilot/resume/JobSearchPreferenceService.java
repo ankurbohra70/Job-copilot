@@ -19,7 +19,9 @@ public class JobSearchPreferenceService {
         JobSearchPreference preference = preferences.findByCandidateProfileId(profileId).orElseGet(() -> new JobSearchPreference(profile));
         preference.replace(new JobSearchPreferenceData(request.defaultResumeStrategy(), request.targetRoles(),
                 request.excludedRoles(), request.preferredLocations(), request.acceptableWorkArrangements(),
-                request.minimumExperienceToleranceYears(), request.maximumExperienceToleranceYears(), request.freshnessDays()));
+                request.minimumExperienceToleranceYears(), request.maximumExperienceToleranceYears(), request.freshnessDays(),
+                request.relocationWilling(), request.compensationCurrency(),
+                request.minimumCompensation(), request.desiredCompensation()));
         return response(profileId, preferences.saveAndFlush(preference));
     }
     @Transactional(readOnly = true)
@@ -27,6 +29,10 @@ public class JobSearchPreferenceService {
         if (!profiles.existsById(profileId)) throw new CandidateProfileNotFoundException(profileId);
         return response(profileId, preferences.findByCandidateProfileId(profileId)
                 .orElseThrow(() -> new PreferenceNotFoundException(profileId)));
+    }
+    @Transactional(readOnly = true)
+    public JobSearchPreferenceResponse find(Long profileId) {
+        return preferences.findByCandidateProfileId(profileId).map(value -> response(profileId, value)).orElse(null);
     }
     @Transactional(readOnly = true)
     public JobSearchPreferenceData data(Long profileId) {

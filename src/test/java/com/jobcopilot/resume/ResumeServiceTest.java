@@ -10,7 +10,9 @@ import static com.jobcopilot.resume.ResumeExceptions.*;
 class ResumeServiceTest {
     private final ResumeTextExtractor extractor = mock(ResumeTextExtractor.class);
     private final ResumePersistenceService persistence = mock(ResumePersistenceService.class);
-    private final ResumeService service = new ResumeService(extractor,new DeterministicProfileParser(),persistence,new ResumeProcessingProperties(100,25,200000,50));
+    private final ResumeService service = new ResumeService(extractor,
+            new DeterministicCandidateProfileExtractor(new DeterministicProfileParser()),
+            persistence,new ResumeProcessingProperties(100,25,200000,50));
     @Test void rejectsEmptyBeforeParser() {
         assertThrows(InvalidResumeFileException.class, () -> service.upload(new MockMultipartFile("file",new byte[0])));
         verifyNoInteractions(extractor,persistence);
@@ -36,7 +38,7 @@ class ResumeServiceTest {
             return new ResumeTextExtractor.Extraction("Java backend experience",1,"test");
         });
         service.upload(new MockMultipartFile("file","C:\\unsafe\\resume.PDF","application/octet-stream","%PDF-".getBytes()));
-        verify(persistence).save(eq("resume.PDF"),eq(5L),eq("Java backend experience"),eq(1),eq("test"),any(),any(),eq("rules-v1"),eq("v1"));
+        verify(persistence).saveDraft(eq("resume.PDF"),eq(5L),eq("Java backend experience"),eq(1),eq("test"),any(),any(),eq("rules-v1"),eq("v1"));
     }
 }
 

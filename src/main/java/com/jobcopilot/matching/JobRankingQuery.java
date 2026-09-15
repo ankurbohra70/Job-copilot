@@ -49,6 +49,11 @@ public record JobRankingQuery(
         );
     }
 
+    public boolean matches(MatchResult result) {
+        if (minScore != null && result.overallScore().compareTo(minScore) < 0) return false;
+        return recommendations.isEmpty() || recommendations.contains(result.recommendation());
+    }
+
     public static JobRankingQuery parse(
             List<String> status,
             List<String> recommendation,

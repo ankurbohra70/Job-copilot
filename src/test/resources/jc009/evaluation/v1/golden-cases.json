@@ -1,0 +1,234 @@
+{
+  "datasetVersion": "jc009-offline-evaluation-v1",
+  "labelAuthority": "HUMAN_REVIEWED",
+  "reviewedBy": "JC-009 release reviewer",
+  "reviewedAt": "2026-09-15",
+  "matchingVocabularyVersion": "v1",
+  "candidateExtractorVersion": "rules-v1",
+  "jobRequirementExtractorVersion": "jc005-v1",
+  "matchingAlgorithmVersion": "deterministic-v1",
+  "decisionPolicyVersion": "application-decision-v1",
+  "candidateExtraction": {
+    "schemaVersion": "jc009-offline-evaluation-v1",
+    "cases": [
+      {
+        "id": "known-backend-history",
+        "reviewStatus": "REVIEWED",
+        "assessedOn": "2024-01-15",
+        "text": "Ada Example\nada@example.com\n\nSkills\nJava Spring Boot AWS\n\nExperience\nBackend Engineer at Acme\nJan 2020 - Dec 2023\n- Built Java Spring Boot APIs on AWS",
+        "gold": {
+          "skills": ["aws", "java", "spring-boot"],
+          "keywords": ["acme", "ada", "apis", "built", "com", "example"],
+          "roleCategories": ["backend"],
+          "totalExperienceMonths": 48,
+          "experienceAssessment": "KNOWN",
+          "firstExperienceStart": "2020-01",
+          "firstExperienceEnd": "2023-12",
+          "selectedIdentity": {"fullName": "Ada Example", "email": "ada@example.com"},
+          "warnings": []
+        }
+      },
+      {
+        "id": "ambiguous-year-history",
+        "reviewStatus": "REVIEWED",
+        "assessedOn": "2024-01-15",
+        "text": "Skills\nPython\n\nExperience\nData Engineer at Beta\n2019 - Present\n- Built pipelines",
+        "gold": {
+          "skills": ["python"],
+          "keywords": ["beta", "built", "pipelines", "present"],
+          "roleCategories": ["data"],
+          "totalExperienceMonths": null,
+          "experienceAssessment": "UNKNOWN",
+          "firstExperienceStart": "2019",
+          "firstExperienceEnd": null,
+          "selectedIdentity": {"fullName": null, "email": null},
+          "warnings": ["Employment chronology is incomplete or ambiguous; total experience is UNKNOWN"]
+        }
+      }
+    ]
+  },
+  "jobRequirementExtraction": {
+    "schemaVersion": "jc009-offline-evaluation-v1",
+    "cases": [
+      {
+        "id": "required-preferred-and-experience",
+        "reviewStatus": "REVIEWED",
+        "description": "Required skills:\n- Java\n- Spring Boot\n- Minimum 3 years experience\nPreferred skills:\n- AWS",
+        "gold": {
+          "requiredSkills": ["java", "spring-boot"],
+          "preferredSkills": ["aws"],
+          "minimumYearsExperience": 3,
+          "abstain": false
+        }
+      },
+      {
+        "id": "experience-only",
+        "reviewStatus": "REVIEWED",
+        "description": "You must have at least 2.5 years of professional experience.",
+        "gold": {
+          "requiredSkills": [],
+          "preferredSkills": [],
+          "minimumYearsExperience": 2.5,
+          "abstain": false
+        }
+      },
+      {
+        "id": "unextractable-description",
+        "reviewStatus": "REVIEWED",
+        "description": "Join a collaborative team and build thoughtful products.",
+        "gold": {
+          "requiredSkills": [],
+          "preferredSkills": [],
+          "minimumYearsExperience": null,
+          "abstain": true
+        }
+      }
+    ]
+  },
+  "matchingRanking": {
+    "schemaVersion": "jc009-offline-evaluation-v1",
+    "candidate": {
+      "skills": ["java", "spring-boot", "aws"],
+      "totalExperienceMonths": 48,
+      "keywords": ["payments"],
+      "roleCategories": ["backend"]
+    },
+    "cases": [
+      {
+        "id": "backend-perfect",
+        "reviewStatus": "REVIEWED",
+        "title": "Backend Engineer",
+        "description": "Payments",
+        "requiredSkills": ["java", "spring-boot"],
+        "preferredSkills": ["aws"],
+        "minimumYearsExperience": 3,
+        "gold": {
+          "matchedRequiredSkills": ["java", "spring-boot"],
+          "missingRequiredSkills": [],
+          "overallScore": 100.00,
+          "recommendation": "STRONG_MATCH",
+          "relevanceGrade": 3
+        }
+      },
+      {
+        "id": "backend-partial",
+        "reviewStatus": "REVIEWED",
+        "title": "Backend Engineer",
+        "description": "Payments",
+        "requiredSkills": ["java"],
+        "preferredSkills": ["postgresql"],
+        "minimumYearsExperience": 5,
+        "gold": {
+          "matchedRequiredSkills": ["java"],
+          "missingRequiredSkills": [],
+          "overallScore": 82.00,
+          "recommendation": "STRONG_MATCH",
+          "relevanceGrade": 2
+        }
+      },
+      {
+        "id": "different-specialty",
+        "reviewStatus": "REVIEWED",
+        "title": "Data Engineer",
+        "description": "Build Python analytics systems.",
+        "requiredSkills": ["python"],
+        "preferredSkills": [],
+        "minimumYearsExperience": 3,
+        "gold": {
+          "matchedRequiredSkills": [],
+          "missingRequiredSkills": ["python"],
+          "overallScore": 30.00,
+          "recommendation": "NOT_RECOMMENDED",
+          "relevanceGrade": 0
+        }
+      }
+    ],
+    "goldRanking": ["backend-perfect", "backend-partial", "different-specialty"],
+    "precisionAtK": 2
+  },
+  "decisionReadiness": {
+    "schemaVersion": "jc009-offline-evaluation-v1",
+    "cases": [
+      {
+        "id": "ready-volume",
+        "reviewStatus": "REVIEWED",
+        "recommendation": "GOOD_MATCH",
+        "score": 72,
+        "workAuthorization": "YES",
+        "sponsorshipRequired": "NO",
+        "preferencePresent": true,
+        "defaultResumeStrategy": "VOLUME",
+        "excludedRoles": [],
+        "identityPresent": true,
+        "routePresent": true,
+        "gold": {
+          "decision": "APPLY_VOLUME",
+          "readiness": "READY",
+          "applyWorthy": true,
+          "doNotApply": false,
+          "checks": {"WORK_AUTHORIZATION": "PASS", "APPLICATION_DECISION": "PASS", "RESUME_ROUTE": "PASS"}
+        }
+      },
+      {
+        "id": "unknown-authorization",
+        "reviewStatus": "REVIEWED",
+        "recommendation": "GOOD_MATCH",
+        "score": 72,
+        "workAuthorization": "UNKNOWN",
+        "sponsorshipRequired": "NO",
+        "preferencePresent": true,
+        "defaultResumeStrategy": "VOLUME",
+        "excludedRoles": [],
+        "identityPresent": true,
+        "routePresent": false,
+        "gold": {
+          "decision": "NEEDS_USER",
+          "readiness": "NEEDS_USER",
+          "applyWorthy": true,
+          "doNotApply": false,
+          "checks": {"WORK_AUTHORIZATION": "NEEDS_USER", "APPLICATION_DECISION": "NEEDS_USER", "RESUME_ROUTE": "NOT_APPLICABLE"}
+        }
+      },
+      {
+        "id": "not-recommended",
+        "reviewStatus": "REVIEWED",
+        "recommendation": "NOT_RECOMMENDED",
+        "score": 30,
+        "workAuthorization": "YES",
+        "sponsorshipRequired": "NO",
+        "preferencePresent": true,
+        "defaultResumeStrategy": "VOLUME",
+        "excludedRoles": [],
+        "identityPresent": true,
+        "routePresent": false,
+        "gold": {
+          "decision": "SKIP",
+          "readiness": "NOT_READY",
+          "applyWorthy": false,
+          "doNotApply": true,
+          "checks": {"WORK_AUTHORIZATION": "PASS", "APPLICATION_DECISION": "FAIL", "RESUME_ROUTE": "NOT_APPLICABLE"}
+        }
+      },
+      {
+        "id": "excluded-strong-role",
+        "reviewStatus": "REVIEWED",
+        "recommendation": "STRONG_MATCH",
+        "score": 91,
+        "workAuthorization": "YES",
+        "sponsorshipRequired": "NO",
+        "preferencePresent": true,
+        "defaultResumeStrategy": "PRECISION",
+        "excludedRoles": ["Backend Engineer"],
+        "identityPresent": true,
+        "routePresent": false,
+        "gold": {
+          "decision": "SKIP",
+          "readiness": "NOT_READY",
+          "applyWorthy": false,
+          "doNotApply": true,
+          "checks": {"WORK_AUTHORIZATION": "PASS", "APPLICATION_DECISION": "FAIL", "RESUME_ROUTE": "NOT_APPLICABLE"}
+        }
+      }
+    ]
+  }
+}

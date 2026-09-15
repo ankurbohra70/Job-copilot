@@ -90,6 +90,10 @@ public class ApiErrorHandler {
     public ResponseEntity<ApiErrorResponse> handleResumeRouteConflict(ResumeRouteConflictException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }
+    @ExceptionHandler({CandidateProfileNotConfirmedException.class, CandidateProfileRevisionConflictException.class})
+    public ResponseEntity<ApiErrorResponse> handleCandidateProfileConflict(RuntimeException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
     @ExceptionHandler({InvalidResumeFileException.class, MissingServletRequestPartException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidResume(Exception exception) {
         return badRequest(exception instanceof InvalidResumeFileException ? exception.getMessage() : "A file part named file is required");

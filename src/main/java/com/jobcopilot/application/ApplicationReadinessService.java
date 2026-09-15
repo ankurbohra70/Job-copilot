@@ -43,7 +43,6 @@ public class ApplicationReadinessService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ApplicationReadinessResult evaluate(Long jobId, Long profileId) {
-        JobApplicationSnapshot job = jobs.applicationSnapshot(jobId);
         MatchResponse match = null;
         ApplicationDecisionResult decision;
         try {
@@ -53,9 +52,25 @@ public class ApplicationReadinessService {
             decision = new ApplicationDecisionResult(jobId, profileId, ApplicationDecision.SAVE,
                     List.of("ASSESSMENT_UNAVAILABLE"), null, null, false, null, ApplicationDecisionPolicy.VERSION);
         }
+        return evaluate(jobId, profileId, match, decision);
+    }
+
+    ApplicationReadinessResult evaluate(Long jobId, Long profileId, MatchResponse match,
+            ApplicationDecisionResult decision) {
+        JobApplicationSnapshot job = jobs.applicationSnapshot(jobId);
         CandidateProfileFacts facts = profiles.facts(profileId);
         JobSearchPreferenceData preference = preferences.data(profileId);
         var verified = verification.find(jobId);
+        ResumeRouteSnapshot route = decision.recommendedResumeStrategy() == null ? null
+                : routes.resolve(profileId, decision.recommendedResumeStrategy(), job.matching().title());
+        return evaluate(job, profileId, match, decision, facts, preference, verified, route);
+    }
+
+    ApplicationReadinessResult evaluate(JobApplicationSnapshot job, Long profileId, MatchResponse match,
+            ApplicationDecisionResult decision, CandidateProfileFacts facts,
+            JobSearchPreferenceData preference,
+            com.jobcopilot.discovery.JobVerificationSnapshot verified,
+            ResumeRouteSnapshot route) {
         List<ReadinessCheck> checks = new ArrayList<>();
 
         boolean pursuitState = job.status() == JobStatus.DISCOVERED || job.status() == JobStatus.SHORTLISTED;
@@ -80,7 +95,7 @@ public class ApplicationReadinessService {
         checks.add(locationCheck(job.matching().location(), preference));
         checks.add(workAuthorizationCheck(facts.workAuthorization()));
         checks.add(sponsorshipCheck(facts.sponsorshipRequired()));
-        checks.add(compensationCheck(facts));
+        checks.add(compensationCheck(preference));
         checks.add(match == null ? check("EXPERIENCE_COMPATIBILITY", NOT_APPLICABLE, "Assessment is unavailable")
                 : experienceCheck(match.experienceComparison().status()));
         checks.add(match == null ? check("REQUIRED_SKILLS", NOT_APPLICABLE, "Assessment is unavailable")
@@ -88,8 +103,6 @@ public class ApplicationReadinessService {
                     match.missingRequiredSkills().isEmpty() ? "All recognized required skills are matched"
                             : "Compatibility assessed with " + match.missingRequiredSkills().size() + " recognized required skill gap(s)"));
 
-        ResumeRouteSnapshot route = decision.recommendedResumeStrategy() == null ? null
-                : routes.resolve(profileId, decision.recommendedResumeStrategy(), job.matching().title());
         ReadinessCheck.Status routeStatus = decision.recommendedResumeStrategy() == null ? NOT_APPLICABLE
                 : route == null ? FAIL : PASS;
         checks.add(check("RESUME_ROUTE", routeStatus, route == null
@@ -106,7 +119,7 @@ public class ApplicationReadinessService {
                 ? ApplicationReadiness.NOT_READY
                 : checks.stream().anyMatch(c -> c.status() == NEEDS_USER)
                     ? ApplicationReadiness.NEEDS_USER : ApplicationReadiness.READY;
-        return new ApplicationReadinessResult(jobId, profileId, overall, decision, route, checks);
+        return new ApplicationReadinessResult(job.matching().id(), profileId, overall, decision, route, checks);
     }
 
     private static ReadinessCheck locationCheck(String location, JobSearchPreferenceData preference) {
@@ -143,8 +156,9 @@ public class ApplicationReadinessService {
             case UNKNOWN -> check("SPONSORSHIP", NEEDS_USER, "Sponsorship requirement is unknown");
         };
     }
-    private static ReadinessCheck compensationCheck(CandidateProfileFacts facts) {
-        boolean known = facts.minimumCompensation() != null || facts.desiredCompensation() != null;
+    private static ReadinessCheck compensationCheck(JobSearchPreferenceData preference) {
+        boolean known = preference != null
+                && (preference.minimumCompensation() != null || preference.desiredCompensation() != null);
         return check("COMPENSATION", known ? PASS : NOT_APPLICABLE,
                 known ? "Compensation expectation is explicitly configured"
                         : "Job-side compensation input requirements are not represented");
