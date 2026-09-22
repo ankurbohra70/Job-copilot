@@ -1,6 +1,5 @@
 package com.jobcopilot.discovery;
 
-import com.jobcopilot.discovery.lever.LeverRegion;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,7 +14,13 @@ import java.util.Optional;
 
 interface JobSourceRepository extends JpaRepository<JobSource, Long> {
     Optional<JobSource> findByProviderAndRegionAndSourceKey(
-            JobSourceProvider provider, LeverRegion region, String sourceKey);
+            JobSourceProvider provider, JobSourceRegion region, String sourceKey);
+
+    default Optional<JobSource> findByProviderAndRegionAndSourceKey(
+            JobSourceProvider provider, com.jobcopilot.discovery.lever.LeverRegion region, String sourceKey) {
+        return findByProviderAndRegionAndSourceKey(provider,
+                region == null ? null : JobSourceRegion.valueOf(region.name()), sourceKey);
+    }
 
     List<JobSource> findByEnabledTrue();
 
@@ -47,6 +52,7 @@ interface JobSourceRepository extends JpaRepository<JobSource, Long> {
                 limit 1
             ) terminal on true
             where source.enabled = true
+              and source.provider in ('LEVER', 'WORKDAY')
               and (
                 (running.id is not null and running.lease_expires_at <= clock_timestamp())
                 or

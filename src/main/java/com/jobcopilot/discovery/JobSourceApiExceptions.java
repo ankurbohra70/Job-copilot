@@ -10,7 +10,7 @@ public final class JobSourceApiExceptions {
 
     public static class DuplicateSource extends RuntimeException {
         public DuplicateSource() {
-            super("A job source with this provider, region, and sourceKey already exists");
+            super("A job source with this provider identity already exists");
         }
     }
 
@@ -20,12 +20,12 @@ public final class JobSourceApiExceptions {
 
     public static class InvalidStoredSource extends RuntimeException {
         public InvalidStoredSource(long sourceId) {
-            super("Job source " + sourceId + " cannot be synchronized with Lever");
+            super("Job source " + sourceId + " cannot be synchronized by the current provider pipeline");
         }
     }
 
     public static class UnsupportedProvider extends RuntimeException {
-        public UnsupportedProvider() { super("Only LEVER is supported"); }
+        public UnsupportedProvider() { super("Unsupported job source provider"); }
     }
 
     public static class InvalidSource extends RuntimeException {

@@ -16,12 +16,12 @@ import org.springframework.stereotype.Component;
 class ScheduledJobSourceSyncCoordinator {
     private static final Logger log = LoggerFactory.getLogger(ScheduledJobSourceSyncCoordinator.class);
     private final JobSourceRepository sources;
-    private final LeverJobSourceSynchronizer synchronizer;
+    private final JobSourceSyncDispatcher synchronizer;
     private final ThreadPoolTaskExecutor executor;
     private final DiscoverySchedulingProperties properties;
     private final DiscoveryDatabaseTime databaseTime;
 
-    ScheduledJobSourceSyncCoordinator(JobSourceRepository sources, LeverJobSourceSynchronizer synchronizer,
+    ScheduledJobSourceSyncCoordinator(JobSourceRepository sources, JobSourceSyncDispatcher synchronizer,
             @Qualifier("discoverySyncExecutor") ThreadPoolTaskExecutor executor,
             DiscoverySchedulingProperties properties, DiscoveryDatabaseTime databaseTime) {
         this.sources = sources;

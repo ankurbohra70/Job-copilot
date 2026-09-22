@@ -59,7 +59,7 @@ class DiscoverySchedulingTest {
 
     @Test void capacityRejectionOccursBeforeAnySynchronizationClaim() {
         JobSourceRepository sources = mock(JobSourceRepository.class);
-        LeverJobSourceSynchronizer synchronizer = mock(LeverJobSourceSynchronizer.class);
+        JobSourceSyncDispatcher synchronizer = mock(JobSourceSyncDispatcher.class);
         ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
         DiscoveryDatabaseTime databaseTime = mock(DiscoveryDatabaseTime.class);
         ScheduledSyncCandidate candidate = candidate(7L);
@@ -76,7 +76,7 @@ class DiscoverySchedulingTest {
 
     @Test void admittedWorkIsOnlyTraversedByTheWorkerRunnableAndSourcesAreIsolated() {
         JobSourceRepository sources = mock(JobSourceRepository.class);
-        LeverJobSourceSynchronizer synchronizer = mock(LeverJobSourceSynchronizer.class);
+        JobSourceSyncDispatcher synchronizer = mock(JobSourceSyncDispatcher.class);
         ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
         DiscoveryDatabaseTime databaseTime = mock(DiscoveryDatabaseTime.class);
         ScheduledSyncCandidate first = candidate(1L);

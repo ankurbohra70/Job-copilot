@@ -39,7 +39,7 @@ class LeverJobSourceSynchronizerTest {
                 new DiscoverySyncTransactions.ScheduledStartDecision(start, null, false));
         when(transactions.fail(eq(1L), eq(10L), anyString(), any())).thenAnswer(invocation ->
                 result(JobSourceSyncStatus.FAILED, invocation.getArgument(2)));
-        when(transactions.succeed(eq(1L), eq(10L), anySet(), any(), any()))
+        when(transactions.succeed(eq(1L), eq(10L), any(CompletedTraversal.class), any(), any()))
                 .thenReturn(result(JobSourceSyncStatus.SUCCEEDED, null));
     }
 
@@ -53,7 +53,7 @@ class LeverJobSourceSynchronizerTest {
 
         assertEquals(JobSourceSyncStatus.SUCCEEDED, result.status());
         verify(transactions).persistPage(eq(1L), eq(10L), argThat(values -> values.size() == 1), any());
-        verify(transactions).succeed(eq(1L), eq(10L), argThat(ids -> ids.equals(java.util.Set.of("one"))),
+        verify(transactions).succeed(eq(1L), eq(10L), argThat(ids -> ids.seenIds().equals(java.util.Set.of("one"))),
                 any(), any());
         verify(transactions, never()).fail(anyLong(), anyLong(), anyString(), any());
         verify(heartbeat).register(10L);
@@ -109,7 +109,7 @@ class LeverJobSourceSynchronizerTest {
         assertEquals(JobSourceSyncStatus.FAILED, result.status());
         assertEquals("DUPLICATE_EXTERNAL_ID_DURING_TRAVERSAL", result.failureCode());
         verify(transactions, times(1)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     @Test void changedCrossPageDuplicateIsAlsoFatal() {
@@ -126,7 +126,7 @@ class LeverJobSourceSynchronizerTest {
 
         assertEquals("DUPLICATE_EXTERNAL_ID_DURING_TRAVERSAL", result.failureCode());
         verify(transactions, times(1)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     @Test void networkFailureAfterCommittedPageNeverReconciles() {
@@ -143,7 +143,7 @@ class LeverJobSourceSynchronizerTest {
 
         assertEquals("TIMEOUT", result.failureCode());
         verify(transactions, times(1)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     @Test void mappingFailureAfterCommittedPageNeverReconciles() {
@@ -160,7 +160,7 @@ class LeverJobSourceSynchronizerTest {
 
         assertEquals("POSTING_MAPPING_FAILED", result.failureCode());
         verify(transactions, times(1)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     @Test void exactFullPageThenEmptyPageCompletesAuthoritatively() {
@@ -176,7 +176,7 @@ class LeverJobSourceSynchronizerTest {
         assertEquals(JobSourceSyncStatus.SUCCEEDED,
                 synchronizer(gateway).synchronize(1L, JobSourceSyncTrigger.MANUAL).status());
         verify(transactions, times(2)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions).succeed(eq(1L), eq(10L), argThat(ids -> ids.size() == 100), any(), any());
+        verify(transactions).succeed(eq(1L), eq(10L), argThat(ids -> ids.seenIds().size() == 100), any(), any());
     }
 
     @Test void fullHundredthPageFailsAtSafetyBoundWithoutReconciliation() {
@@ -192,7 +192,7 @@ class LeverJobSourceSynchronizerTest {
 
         assertEquals("TRAVERSAL_LIMIT_EXCEEDED", result.failureCode());
         verify(transactions, times(100)).persistPage(eq(1L), eq(10L), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     @ParameterizedTest
@@ -206,7 +206,7 @@ class LeverJobSourceSynchronizerTest {
         assertEquals(JobSourceSyncStatus.FAILED, result.status());
         assertEquals(kind.name(), result.failureCode());
         verify(transactions, never()).persistPage(anyLong(), anyLong(), anyList(), any());
-        verify(transactions, never()).succeed(anyLong(), anyLong(), anySet(), any(), any());
+        verify(transactions, never()).succeed(anyLong(), anyLong(), any(CompletedTraversal.class), any(), any());
     }
 
     private LeverJobSourceSynchronizer synchronizer(LeverPostingGateway gateway) {

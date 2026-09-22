@@ -156,7 +156,7 @@ class ResumeUploadIntegrationTest {
                 """.formatted(resumeId)).statusCode());
 
         long sourceId = jdbc.queryForObject("""
-                INSERT INTO job_sources(provider, region, source_key, company_name, enabled, created_at, updated_at)
+                INSERT INTO job_sources(provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', ?, 'Acme', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
                 """, Long.class, "authority-source-" + profileId);

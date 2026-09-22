@@ -14,7 +14,7 @@ class LeverPostingMapperTest {
             "example", "Example Company", true);
 
     @Test void mapsEveryPersistedProjectionAndPrefersPrimaryLocation() {
-        LeverMappedListing mapped = mapper.map(source, posting("id-1", "  Senior\nEngineer  ",
+        MappedExternalJobListing mapped = mapper.map(source, posting("id-1", "  Senior\nEngineer  ",
                 new LeverPosting.Categories(" Remote ", List.of("Delhi", "Pune"), null, null, null),
                 new LeverPosting.Content(null, "Required: Java", List.of(), null, null)), "jc005-v1");
         assertEquals("id-1", mapped.externalJobId());
@@ -28,7 +28,7 @@ class LeverPostingMapperTest {
     }
 
     @Test void fallsBackToDistinctOrderedAllLocationsAndAllowsBlankDescription() {
-        LeverMappedListing mapped = mapper.map(source, posting("id-2", "Engineer",
+        MappedExternalJobListing mapped = mapper.map(source, posting("id-2", "Engineer",
                 new LeverPosting.Categories(null, List.of(" Pune ", "Pune", "Delhi"), null, null, null),
                 new LeverPosting.Content(null, null, List.of(), null, null)), "jc005-v1");
         assertEquals("Pune / Delhi", mapped.location());

@@ -99,7 +99,7 @@ class ApplicationReadinessIntegrationTest {
                 RETURNING id
                 """, Long.class, description);
         long sourceId = jdbc.queryForObject("""
-                INSERT INTO job_sources(provider, region, source_key, company_name, enabled, created_at, updated_at)
+                INSERT INTO job_sources(provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', 'qa-source', 'Acme', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
                 """, Long.class);

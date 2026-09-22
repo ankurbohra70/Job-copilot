@@ -26,7 +26,7 @@ class JobSourceServiceTest {
     private JobSourceRepository sources;
     private JobSourceSyncRunRepository runs;
     private ExternalJobListingRepository listings;
-    private LeverJobSourceSynchronizer synchronizer;
+    private JobSourceSyncDispatcher synchronizer;
     private DiscoveryJobReadService jobReads;
     private ExtractionFingerprint fingerprints;
     private JobRequirementExtractor extractor;
@@ -37,7 +37,7 @@ class JobSourceServiceTest {
         sources = mock(JobSourceRepository.class);
         runs = mock(JobSourceSyncRunRepository.class);
         listings = mock(ExternalJobListingRepository.class);
-        synchronizer = mock(LeverJobSourceSynchronizer.class);
+        synchronizer = mock(JobSourceSyncDispatcher.class);
         jobReads = mock(DiscoveryJobReadService.class);
         fingerprints = new ExtractionFingerprint();
         extractor = new JobRequirementExtractor();
@@ -72,7 +72,7 @@ class JobSourceServiceTest {
     @Test
     void onlyNamedIdentityConstraintBecomesDuplicate() {
         ConstraintViolationException duplicate = mock(ConstraintViolationException.class);
-        when(duplicate.getConstraintName()).thenReturn("uq_job_sources_identity");
+        when(duplicate.getConstraintName()).thenReturn("uq_job_sources_lever_identity");
         when(sources.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("hidden", duplicate));
         assertThrows(DuplicateSource.class, () -> service.create(request()));
 
@@ -105,6 +105,7 @@ class JobSourceServiceTest {
     @Test
     void failureCodesAreAllowlisted() {
         assertEquals("TIMEOUT", JobSourceService.safeFailureCode("TIMEOUT"));
+        assertEquals("UNEXPECTED_CONTENT_TYPE", JobSourceService.safeFailureCode("UNEXPECTED_CONTENT_TYPE"));
         assertEquals("SYNC_FAILED", JobSourceService.safeFailureCode("PRIVATE_INTERNAL_CODE"));
         assertNull(JobSourceService.safeFailureCode(null));
     }

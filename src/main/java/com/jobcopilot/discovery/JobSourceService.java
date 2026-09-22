@@ -19,6 +19,8 @@ import com.jobcopilot.discovery.dto.JobSourceResponse;
 import com.jobcopilot.discovery.dto.JobSourceSyncRunPageResponse;
 import com.jobcopilot.discovery.dto.JobSourceSyncRunResponse;
 import com.jobcopilot.discovery.lever.LeverSource;
+import com.jobcopilot.discovery.lever.LeverRegion;
+import com.jobcopilot.discovery.workday.WorkdaySource;
 import com.jobcopilot.job.DiscoveryJobReadService;
 import com.jobcopilot.job.JobRequirementExtractor;
 import java.math.BigDecimal;
@@ -44,19 +46,21 @@ public class JobSourceService {
     private static final Set<String> PUBLIC_FAILURE_CODES = Set.of(
             "SOURCE_NOT_FOUND", "RATE_LIMITED", "REQUEST_REJECTED", "PROVIDER_UNAVAILABLE",
             "TIMEOUT", "CONNECTION_FAILURE", "INTERRUPTED", "MALFORMED_RESPONSE", "INVALID_RESPONSE",
+            "UNEXPECTED_CONTENT_TYPE",
             "RESPONSE_TOO_LARGE", "POSTING_MAPPING_FAILED", "DUPLICATE_EXTERNAL_ID_DURING_TRAVERSAL",
-            "TRAVERSAL_LIMIT_EXCEEDED", "PERSISTENCE_FAILURE", "APPLICATION_RESTARTED", "LEASE_EXPIRED");
+            "TRAVERSAL_LIMIT_EXCEEDED", "INCONSISTENT_PAGINATION", "PERSISTENCE_FAILURE",
+            "APPLICATION_RESTARTED", "LEASE_EXPIRED");
 
     private final JobSourceRepository sources;
     private final JobSourceSyncRunRepository runs;
     private final ExternalJobListingRepository listings;
-    private final LeverJobSourceSynchronizer synchronizer;
+    private final JobSourceSyncDispatcher synchronizer;
     private final ExtractionFingerprint fingerprints;
     private final JobRequirementExtractor extractor;
     private final DiscoveryJobReadService jobReads;
 
     public JobSourceService(JobSourceRepository sources, JobSourceSyncRunRepository runs,
-            ExternalJobListingRepository listings, LeverJobSourceSynchronizer synchronizer,
+            ExternalJobListingRepository listings, JobSourceSyncDispatcher synchronizer,
             ExtractionFingerprint fingerprints, JobRequirementExtractor extractor,
             DiscoveryJobReadService jobReads) {
         this.sources = sources;
@@ -70,19 +74,30 @@ public class JobSourceService {
 
     @Transactional
     public JobSourceResponse create(CreateJobSourceRequest request) {
-        if (request.provider() != JobSourceProvider.LEVER) throw new UnsupportedProvider();
         JobSource source;
         try {
-            source = new JobSource(request.provider(), request.region(), request.sourceKey(),
-                    request.companyName(), request.enabled());
-            new LeverSource(source.region(), source.sourceKey());
+            if (request.provider() == JobSourceProvider.LEVER) {
+                source = new JobSource(request.provider(), request.region(), request.sourceKey(),
+                        request.companyName(), request.enabled(), request.endpointHost(), request.tenantKey(),
+                        request.siteKey(), request.locale());
+                new LeverSource(LeverRegion.valueOf(source.region().name()), source.sourceKey());
+            } else if (request.provider() == JobSourceProvider.WORKDAY) {
+                WorkdaySource workday = new WorkdaySource(request.endpointHost(), request.tenantKey(),
+                        request.siteKey(), request.locale());
+                source = new JobSource(request.provider(), request.region(), request.sourceKey(),
+                        request.companyName(), request.enabled(), workday.endpointHost(), workday.tenantKey(),
+                        workday.siteKey(), workday.locale());
+            } else {
+                throw new UnsupportedProvider();
+            }
         } catch (IllegalArgumentException | NullPointerException invalid) {
-            throw new InvalidSource("Invalid Lever job source identity");
+            throw new InvalidSource("Invalid job source identity");
         }
         try {
             return toResponse(sources.saveAndFlush(source));
         } catch (DataIntegrityViolationException failure) {
-            if (hasConstraint(failure, "uq_job_sources_identity")) throw new DuplicateSource();
+            if (hasConstraint(failure, "uq_job_sources_lever_identity")
+                    || hasConstraint(failure, "uq_job_sources_workday_identity")) throw new DuplicateSource();
             throw new PersistenceFailure();
         }
     }
@@ -109,14 +124,19 @@ public class JobSourceService {
         return toResponse(sources.saveAndFlush(source));
     }
 
-    /** Intentionally non-transactional: Phase 3 owns all synchronization transactions. */
+    /** Provider I/O remains outside the short synchronization transactions. */
     public JobSourceSyncRunResponse synchronize(long sourceId) {
         requirePositive(sourceId, "sourceId");
         JobSource source = sources.findById(sourceId).orElseThrow(() -> new SourceNotFound(sourceId));
         if (!source.enabled()) throw new SourceDisabled(sourceId);
-        if (source.provider() != JobSourceProvider.LEVER) throw new InvalidStoredSource(sourceId);
         try {
-            new LeverSource(source.region(), source.sourceKey());
+            if (source.provider() == JobSourceProvider.LEVER) {
+                new LeverSource(LeverRegion.valueOf(source.region().name()), source.sourceKey());
+            } else if (source.provider() == JobSourceProvider.WORKDAY) {
+                new WorkdaySource(source.endpointHost(), source.tenantKey(), source.siteKey(), source.locale());
+            } else {
+                throw new InvalidStoredSource(sourceId);
+            }
         } catch (RuntimeException invalid) {
             throw new InvalidStoredSource(sourceId);
         }
@@ -211,7 +231,7 @@ public class JobSourceService {
     private static JobSourceResponse toResponse(JobSource source) {
         return new JobSourceResponse(source.id(), source.provider(), source.region(), source.sourceKey(),
                 source.companyName(), source.enabled(), source.lastSuccessfulSyncAt(), source.createdAt(),
-                source.updatedAt());
+                source.updatedAt(), source.endpointHost(), source.tenantKey(), source.siteKey(), source.locale());
     }
 
     private static JobSourceSyncRunResponse toResponse(JobSourceSyncRun run, long sourceId) {

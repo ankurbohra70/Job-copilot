@@ -67,7 +67,7 @@ class DiscoveryPersistenceIntegrationTest {
         assertEquals("LEVER", jdbc.queryForObject(
                 "SELECT provider FROM job_sources WHERE id = ?", String.class, source.id()));
         assertEquals("GLOBAL", jdbc.queryForObject(
-                "SELECT region FROM job_sources WHERE id = ?", String.class, source.id()));
+                "SELECT routing_region FROM job_sources WHERE id = ?", String.class, source.id()));
 
         LocalDateTime initialUpdated = source.updatedAt();
         Thread.sleep(5);
@@ -92,17 +92,17 @@ class DiscoveryPersistenceIntegrationTest {
     void databaseRejectsNoncanonicalSourceKeys() {
         assertDatabaseRejects("""
                 INSERT INTO job_sources(
-                    provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', 'Mixed-Case', 'Company', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """);
         assertDatabaseRejects("""
                 INSERT INTO job_sources(
-                    provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', ' site ', 'Company', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """);
         assertDatabaseRejects("""
                 INSERT INTO job_sources(
-                    provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', ?, 'Company', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, "\tsite\t");
     }
@@ -375,11 +375,11 @@ class DiscoveryPersistenceIntegrationTest {
         Long jobId = jobs.createJob(jobRequest("invalid-enums")).id();
 
         assertDatabaseRejects("""
-                INSERT INTO job_sources(provider, region, source_key, company_name, enabled, created_at, updated_at)
+                INSERT INTO job_sources(provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('OTHER', 'GLOBAL', 'provider', 'Company', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """);
         assertDatabaseRejects("""
-                INSERT INTO job_sources(provider, region, source_key, company_name, enabled, created_at, updated_at)
+                INSERT INTO job_sources(provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'OTHER', 'region', 'Company', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """);
         assertDatabaseRejects("""
@@ -471,7 +471,7 @@ class DiscoveryPersistenceIntegrationTest {
 
         assertDatabaseRejects("""
                 INSERT INTO job_sources(
-                    provider, region, source_key, company_name, enabled,
+                    provider, routing_region, source_key, company_name, enabled,
                     last_successful_sync_at, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', 'time-source', 'Company', TRUE,
                     TIMESTAMP '2026-09-11 09:00:00', TIMESTAMP '2026-09-11 10:00:00', TIMESTAMP '2026-09-11 10:00:00')

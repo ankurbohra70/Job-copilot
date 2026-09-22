@@ -17,6 +17,12 @@ final class ProviderContentDigest {
                 + hash(VERSION, Arrays.asList(title, location, description, hostedUrl, applyUrl));
     }
 
+    String calculateWorkday(String title, String location, String description, String hostedUrl, String applyUrl) {
+        String version = "workday-content-v1";
+        return version + ":sha256:"
+                + hash(version, Arrays.asList(title, location, description, hostedUrl, applyUrl));
+    }
+
     static String hash(String version, List<String> fields) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

@@ -41,7 +41,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
 | `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
-Authentication, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope. JC-008 provides source/listing APIs, synchronous manual synchronization, and opt-in scheduled synchronization.
+Authentication, OCR, LLM/embedding matching, application automation, and public multi-user access are out of scope. JC-011 adds a private V1 thin client in `web/`.
 
 ## Prerequisites
 
@@ -91,6 +91,29 @@ The automated tests exercise the controller/API contract, error mappings, servic
 ```
 
 On macOS/Linux, use `./mvnw spring-boot:run`. The API starts at `http://localhost:8080`.
+
+## Run the V1 UI (JC-011)
+
+The UI is a Vite + React app in `web/`. It is a thin client over the existing API. Dev mode proxies `/api` to `http://localhost:8080`, so start the backend first.
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. `VITE_API_BASE_URL` is public client configuration only (empty means same origin / the Vite proxy). Do not put API keys or database credentials in `VITE_*` variables.
+
+Frontend checks:
+
+```powershell
+cd web
+npm test
+npx playwright install chromium
+npm run e2e
+```
+
+Private V1 production packaging: build `web/dist` and serve it same-origin with the API over HTTPS. Split-origin hosting would need a backend CORS allowlist and is not required for this increment. This UI is for a single-user private workspace. Public or multi-user exposure requires authentication and per-user authorization first.
 
 ## Create a job
 
@@ -285,8 +308,11 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V4 | `V4__add_job_discovery_domain.sql` | External job sources, listings, liveness, and synchronization-run state |
 | V5 | `V5__add_listing_extraction_fingerprint.sql` | Version-aware deterministic extraction currency |
 | V6 | `V6__add_sync_run_lease.sql` | Lease-based run ownership and crash recovery |
+| V7 | `V7__add_application_readiness_foundations.sql` | Candidate search policy, resume routes, and readiness foundations |
+| V8 | `V8__add_candidate_profile_authority.sql` | Confirmed candidate authority, revisioning, and search-intent ownership |
+| V9 | `V9__add_workday_job_sources.sql` | Provider-neutral source routing plus checked Workday host/tenant/site/locale identity |
 
-A new empty database migrates V1 through V8 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, and V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V9 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences, and V9 preserves existing Lever identities while adding provider-shaped Workday source configuration. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
@@ -867,6 +893,117 @@ multi-instance same-source races, independent-source progress, crash recovery, p
 closure/reopening, extraction preservation, transaction boundaries, REST compatibility, and scheduler-disabled
 behavior before JC-008 is frozen.
 
+## JC-010 Phase 1 (Workday source and network boundary)
+
+Phase 1 adds `WORKDAY` source configuration and a synchronous, persistence-free connector for one public CXS
+search page or one job-detail response. It does **not** traverse a complete site, map or persist listings, extract
+requirements, reconcile closures, or integrate Workday with manual/scheduled synchronization. Enabled Workday
+sources are deliberately excluded from scheduled claims until the shared Phase 3 dispatcher exists; attempting a
+manual Workday sync returns the existing conflict contract without creating a run.
+
+A Workday source is identified explicitly by:
+
+- `endpointHost`: a lowercase public host ending in `.myworkdayjobs.com` or `.myworkdaysite.com`;
+- `tenantKey`: the lowercase CXS tenant path segment;
+- `siteKey`: the case-preserving external-career-site path segment;
+- `locale`: a canonical language tag such as `en-US`, sent as `Accept-Language` and included in source identity.
+
+Arbitrary/custom hosts are not accepted in Phase 1. Scheme, port, user info, path, query, fragment, control
+characters, dot segments, and mixed Lever/Workday configuration are rejected. PostgreSQL independently enforces
+provider-shaped nullable fields and unique identities. Existing Lever API JSON keeps `region` and `sourceKey`; its
+stored `region` column is migrated without data loss to provider-neutral `routing_region`.
+
+Example source request:
+
+```json
+{
+  "provider": "WORKDAY",
+  "companyName": "Example Company",
+  "enabled": true,
+  "endpointHost": "example.wd5.myworkdayjobs.com",
+  "tenantKey": "example",
+  "siteKey": "External_Career_Site",
+  "locale": "en-US"
+}
+```
+
+### Observed CXS contract and limits
+
+Reconnaissance on 2026-09-16 covered public sites for Workday (`wd5.myworkdayjobs.com`), NVIDIA
+(`wd5.myworkdayjobs.com`), Salesforce (`wd12.myworkdayjobs.com`), and Telesure
+(`wd3.myworkdaysite.com`). This is an observed browser-facing contract, not an officially guaranteed Workday API.
+No CAPTCHA, WAF, or access restriction was bypassed.
+
+- Search used `POST /wday/cxs/{tenant}/{site}/jobs` with `appliedFacets`, `limit`, `offset`, and empty
+  `searchText`. The observed maximum `limit` was 20; 0, 21, 100, and 101 returned HTTP 400.
+- Search responses contained integer `total`, `jobPostings`, tenant-specific `facets`, and authentication state.
+  Posting rows contained title, relative `/job/...` path, location/posted display text and bullet fields; remote
+  type was optional. Salesforce's `External_Career_Site` also returned an observed non-posting marker with exactly
+  one nonempty `bulletFields` array; it consumes a pagination slot and is handled without relaxing posting fields.
+- `total` is **not** stable across pages: all four sites returned their count at offset 0 but `0` at offset 2 while
+  returning jobs. Traversal captures the initial total as a bounded raw-slot consistency check, ignores later zero
+  totals, and requires an actually short/empty terminal page before reconciliation; only complete traversal is
+  closure authority.
+- Detail used one `GET` to the search-returned path below the same CXS tenant/site. Across the four tenants it
+  consistently exposed an opaque `id`, title, HTML description, posting/application flags, site/posting/requisition
+  identifiers, and a canonical external URL; optional location, remote type, dates, end-date, logo, country, and
+  additional-location fields varied.
+- Invalid site and job probes produced JSON HTTP 400 and 404 respectively. Redirects are not followed. 408, 429,
+  and 5xx responses have deterministic sanitized classifications.
+- During the explicitly gated acceptance run on 2026-09-16, Workday's own tenant timed out at the configured
+  20-second one-shot limit and NVIDIA returned HTTP 302 to Workday's public maintenance page. The client neither
+  followed nor retried those responses. These outcomes validate failure handling but do **not** count as a live
+  acceptance pass for those wd5 tenants. The same gated search/detail test passed against Telesure's
+  `wd3.myworkdaysite.com` tenant in 3.744 seconds and passed again in 3.112 seconds after the adversarial
+  URL-validation hardening; the wd5 cases must still be rerun outside maintenance.
+
+The boundary requires JSON media types, strict duplicate-key/trailing-token handling, maximum nesting/string/name/
+number/token limits, search/detail byte caps, same-host HTTPS external URLs, source-site consistency when present,
+observed site-path consistency even when the optional site ID is absent, encoded slash/backslash/dot/percent
+rejection, and no more postings than requested. Malformed or empty detail paths fail before request construction.
+It makes exactly one HTTP attempt, with OkHttp redirects, connection replay,
+and its special `503 Retry-After: 0` follow-up disabled. The byte caps apply after transparent gzip decoding.
+Bodies, detail paths, full URLs, and descriptions are not logged; Workday data and detail-request diagnostic
+`toString()` values are redacted to prevent accidental caller logging. Provider HTML remains untrusted data;
+deterministic sanitization/mapping belongs to Phase 2.
+
+### Posting identity evidence
+
+Observed details provided three different candidates: opaque `jobPostingInfo.id`, `jobPostingId`, and `jobReqId`.
+All four samples had distinct opaque 32-character identifiers, while posting IDs included slugs and requisition
+IDs were human-facing. This is insufficient evidence of stability across edits, locales, reposts, closure/reopen,
+or multiple external sites. Phase 1 intentionally exposed all candidates without selecting or persisting an
+`external_job_id`; identity was not frozen at that stage. The later selection, repeated/sanctioned evidence, and
+V1 Beta acceptance amendment are recorded in the Phase 5 terminal status below.
+
+Normal tests use sanitized multi-tenant fixtures and local HTTP servers. The live boundary test is skipped unless
+both the boolean gate and all source coordinates are supplied explicitly:
+
+```powershell
+.\mvnw.cmd "-Djobcopilot.workday.live=true" `
+  "-Djobcopilot.workday.live.host=example.wd5.myworkdayjobs.com" `
+  "-Djobcopilot.workday.live.tenant=example" `
+  "-Djobcopilot.workday.live.site=External_Career_Site" `
+  "-Djobcopilot.workday.live.locale=en-US" `
+  "-Dtest=WorkdayPostingGatewayLiveAcceptanceTest" test
+```
+
+Known uncertainties are custom-domain support, whether locale changes representation or posting identity, opaque-ID
+stability, closure/repost races, robots/customer authorization, and rate/WAF behavior under complete traversal.
+
+### JC-010 Phase 5 terminal status (2026-09-21)
+
+The Salesforce production-page-size incompatibility is resolved by strict recognition of its observed non-posting
+marker while retaining raw pagination-slot accounting. The exact Salesforce boundary acceptance now passes. A
+disposable-database live acceptance also completed the 43-posting Telesure board twice: the first synchronization
+created 43 listings and the second reported 43 unchanged with the full external-ID/listing-ID map preserved.
+
+JC-010 is **complete and frozen for V1 Beta**. `jobPostingInfo.id` has repeated multi-site and whole-board identity
+evidence, complete live synchronization/resynchronization passed, and the final `mvn verify` passed. Because no
+sanctioned controllable Workday posting was available, provider identity reuse through edit, close/reappearance,
+repost, site transfer, or locale change is explicitly accepted as a post-launch external limitation rather than
+claimed as proven. See `JC-010-PHASE5-QA.md` for the evidence, rationale, exact commands, and terminal decision.
+
 ## Candidate application readiness foundations
 
 The application layer remains separate from job lifecycle, matching, and ranking. Candidate profiles contain
@@ -975,6 +1112,10 @@ remain optional and non-authoritative.
 | `LEVER_CONNECT_TIMEOUT` | `5s` |
 | `LEVER_REQUEST_TIMEOUT` | `20s` |
 | `LEVER_MAX_RESPONSE_BYTES` | `10485760` |
+| `WORKDAY_CONNECT_TIMEOUT` | `5s` |
+| `WORKDAY_REQUEST_TIMEOUT` | `20s` |
+| `WORKDAY_MAX_SEARCH_RESPONSE_BYTES` | `5242880` |
+| `WORKDAY_MAX_DETAIL_RESPONSE_BYTES` | `2097152` |
 | `JOB_DISCOVERY_SCHEDULING_ENABLED` | `false` |
 | `JOB_DISCOVERY_SCHEDULING_TICK_INTERVAL` | `1m` |
 | `JOB_DISCOVERY_SCHEDULING_INITIAL_DELAY` | `30s` |

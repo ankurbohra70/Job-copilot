@@ -4,6 +4,8 @@ import com.jobcopilot.common.web.ApiErrorHandler;
 import com.jobcopilot.discovery.lever.LeverFetchResult;
 import com.jobcopilot.discovery.lever.LeverPosting;
 import com.jobcopilot.discovery.lever.LeverPostingGateway;
+import com.jobcopilot.discovery.workday.WorkdayFetchResult;
+import com.jobcopilot.discovery.workday.WorkdayPostingGateway;
 import com.jobcopilot.job.JobService;
 import com.jobcopilot.job.JobController;
 import com.jobcopilot.job.JobStatus;
@@ -52,6 +54,7 @@ class JobSourceApiIntegrationTest {
     }
 
     @MockitoBean LeverPostingGateway gateway;
+    @MockitoBean WorkdayPostingGateway workdayGateway;
     @Autowired JobSourceController controller;
     @Autowired JobController jobController;
     @Autowired JobSourceService service;
@@ -69,7 +72,7 @@ class JobSourceApiIntegrationTest {
     @BeforeEach
     void setUp() {
         jdbc.execute("TRUNCATE TABLE job_source_sync_runs, external_job_listings, job_skills, jobs, job_sources RESTART IDENTITY CASCADE");
-        reset(gateway);
+        reset(gateway, workdayGateway);
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mvc = MockMvcBuilders.standaloneSetup(controller, jobController).setControllerAdvice(new ApiErrorHandler())
@@ -80,7 +83,11 @@ class JobSourceApiIntegrationTest {
     void fullHttpFlowPreservesTransactionAvailabilityAndCanonicalJob() throws Exception {
         long sourceId = create(" Example ");
         mvc.perform(get("/api/job-sources/{id}", sourceId)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.sourceKey").value("example"));
+                .andExpect(jsonPath("$.sourceKey").value("example"))
+                .andExpect(jsonPath("$.endpointHost").doesNotExist())
+                .andExpect(jsonPath("$.tenantKey").doesNotExist())
+                .andExpect(jsonPath("$.siteKey").doesNotExist())
+                .andExpect(jsonPath("$.locale").doesNotExist());
 
         doAnswer(invocation -> {
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
@@ -143,6 +150,106 @@ class JobSourceApiIntegrationTest {
     }
 
     @Test
+    void workdaySourceConfigurationIsExplicitUniqueValidatedAndSynchronizable() throws Exception {
+        String valid = """
+                {"provider":"WORKDAY","companyName":"NVIDIA","enabled":true,
+                 "endpointHost":"nvidia.wd5.myworkdayjobs.com","tenantKey":"nvidia",
+                 "siteKey":"NVIDIAExternalCareerSite","locale":"en-US"}
+                """;
+        String body = mvc.perform(post("/api/job-sources").contentType("application/json").content(valid))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.provider").value("WORKDAY"))
+                .andExpect(jsonPath("$.region").doesNotExist())
+                .andExpect(jsonPath("$.sourceKey").doesNotExist())
+                .andExpect(jsonPath("$.endpointHost").value("nvidia.wd5.myworkdayjobs.com"))
+                .andExpect(jsonPath("$.tenantKey").value("nvidia"))
+                .andExpect(jsonPath("$.siteKey").value("NVIDIAExternalCareerSite"))
+                .andExpect(jsonPath("$.locale").value("en-US"))
+                .andReturn().getResponse().getContentAsString();
+        long id = json.readTree(body).get("id").asLong();
+
+        mvc.perform(get("/api/job-sources/{id}", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("WORKDAY"));
+        mvc.perform(get("/api/job-sources").queryParam("enabled", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == %d)].provider".formatted(id)).value("WORKDAY"));
+        mvc.perform(patch("/api/job-sources/{id}/enabled", id)
+                        .contentType("application/json").content("{\"enabled\":false}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
+        mvc.perform(post("/api/job-sources/{id}/sync", id)).andExpect(status().isConflict());
+        mvc.perform(patch("/api/job-sources/{id}/enabled", id)
+                        .contentType("application/json").content("{\"enabled\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
+
+        mvc.perform(post("/api/job-sources").contentType("application/json").content(valid))
+                .andExpect(status().isConflict());
+
+        var workdayRequest = new com.jobcopilot.discovery.dto.CreateJobSourceRequest(
+                JobSourceProvider.WORKDAY, null, null, "NVIDIA UK", true,
+                "nvidia.wd5.myworkdayjobs.com", "nvidia", "NVIDIAExternalCareerSite", "en-GB");
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Object> outcomes = executor.invokeAll(List.<Callable<Object>>of(
+                    () -> attemptCreate(workdayRequest), () -> attemptCreate(workdayRequest))).stream()
+                    .map(future -> {
+                        try { return future.get(); }
+                        catch (Exception exception) { throw new RuntimeException(exception); }
+                    }).toList();
+            assertEquals(1, outcomes.stream()
+                    .filter(com.jobcopilot.discovery.dto.JobSourceResponse.class::isInstance).count());
+            assertEquals(1, outcomes.stream()
+                    .filter(JobSourceApiExceptions.DuplicateSource.class::isInstance).count());
+            assertEquals(2, sources.findAll().stream()
+                    .filter(source -> source.provider() == JobSourceProvider.WORKDAY).count());
+        } finally {
+            executor.shutdownNow();
+        }
+        when(workdayGateway.searchPage(any(), any())).thenAnswer(invocation ->
+                new WorkdayFetchResult.SearchSuccess(invocation.getArgument(0), invocation.getArgument(1),
+                        0, List.of(), Duration.ZERO));
+        String successfulRun = mvc.perform(post("/api/job-sources/{id}/sync", id)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+                .andReturn().getResponse().getContentAsString();
+        long successfulRunId = json.readTree(successfulRun).get("runId").asLong();
+        mvc.perform(get("/api/job-sources/{id}/sync-runs", id))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].runId").value(successfulRunId));
+        mvc.perform(get("/api/job-sources/{id}/sync-runs/{runId}", id, successfulRunId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SUCCEEDED"));
+        mvc.perform(get("/api/job-sources/{id}/listings", id))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM job_source_sync_runs WHERE job_source_id = ?", Integer.class, id));
+
+        doAnswer(invocation ->
+                new WorkdayFetchResult.Failure(invocation.getArgument(0), WorkdayFetchResult.Operation.SEARCH,
+                        invocation.getArgument(1), null, WorkdayFetchResult.FailureKind.TIMEOUT,
+                        null, Duration.ZERO)).when(workdayGateway).searchPage(any(), any());
+        String failedRun = mvc.perform(post("/api/job-sources/{id}/sync", id))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.failureCode").value("TIMEOUT"))
+                .andReturn().getResponse().getContentAsString();
+        long failedRunId = json.readTree(failedRun).get("runId").asLong();
+        mvc.perform(get("/api/job-sources/{id}/sync-runs/{runId}", id, failedRunId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.failureCode").value("TIMEOUT"));
+
+        mvc.perform(post("/api/job-sources").contentType("application/json").content("""
+                {"provider":"WORKDAY","region":"GLOBAL","sourceKey":"invented",
+                 "companyName":"Mixed","enabled":true,"endpointHost":"wd3.myworkdaysite.com",
+                 "tenantKey":"tenant","siteKey":"Site","locale":"en-US"}
+                """ )).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/job-sources").contentType("application/json").content("""
+                {"provider":"WORKDAY","companyName":"Unsafe","enabled":true,
+                 "endpointHost":"evil.example","tenantKey":"tenant","siteKey":"Site","locale":"en-US"}
+                """ )).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/job-sources").contentType("application/json").content("""
+                {"provider":"LEVER","region":"GLOBAL","sourceKey":"lever",
+                 "companyName":"Mixed Lever","enabled":true,
+                 "endpointHost":"wd3.myworkdaysite.com","tenantKey":"tenant",
+                 "siteKey":"Site","locale":"en-US"}
+                """ )).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void sourceScopedChildrenStayHiddenAndLegacyInvalidSourceConflicts() throws Exception {
         long first = create("first");
         respondWith(posting("one", "Required: Java"));
@@ -160,7 +267,7 @@ class JobSourceApiIntegrationTest {
                 .andExpect(status().isNotFound());
 
         jdbc.update("""
-                INSERT INTO job_sources(provider, region, source_key, company_name, enabled, created_at, updated_at)
+                INSERT INTO job_sources(provider, routing_region, source_key, company_name, enabled, created_at, updated_at)
                 VALUES ('LEVER', 'GLOBAL', '.', 'Legacy', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """);
         long legacyId = jdbc.queryForObject("SELECT id FROM job_sources WHERE source_key = '.'", Long.class);

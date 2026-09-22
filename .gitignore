@@ -9,3 +9,16 @@ target/
 .env
 .DS_Store
 Thumbs.db
+
+# Frontend dependencies
+web/node_modules/
+
+# Repository-local pnpm store
+.pnpm-store/
+
+# Frontend build output
+web/dist/
+
+# Coverage
+web/coverage/
+coverage/

@@ -6,6 +6,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
@@ -61,7 +62,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v3", null);
-        assertEquals(5, upgraded.migrate().migrationsExecuted);
+        assertEquals(6, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -105,7 +106,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v4", null);
-        assertEquals(4, upgraded.migrate().migrationsExecuted);
+        assertEquals(5, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -184,7 +185,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v5", null);
-        assertEquals(3, upgraded.migrate().migrationsExecuted);
+        assertEquals(4, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -258,7 +259,7 @@ class SchemaMigrationIntegrationTest {
                     """);
         }
         var upgraded = flyway("upgrade_v6", null);
-        assertEquals(2, upgraded.migrate().migrationsExecuted);
+        assertEquals(3, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -385,7 +386,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v7", null);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -413,6 +414,110 @@ class SchemaMigrationIntegrationTest {
                 assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
                         rows.getTimestamp(10).toLocalDateTime());
             }
+        }
+    }
+
+    @Test void populatedV8SchemaAddsCheckedWorkdayIdentityAndPreservesLeverGraph() throws Exception {
+        flyway("upgrade_v8", "8").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v8.jobs(id, title, company, status, source, external_job_id,
+                        created_at, updated_at)
+                    VALUES (80, 'Preserved', 'Company', 'APPLIED', 'LEVER', 'posting-80',
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(id, provider, region, source_key, company_name,
+                        enabled, last_successful_sync_at, created_at, updated_at)
+                    VALUES (80, 'LEVER', 'GLOBAL', 'preserved', 'Company', true,
+                        TIMESTAMP '2026-02-01 00:00:00', TIMESTAMP '2026-01-01 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.external_job_listings(id, job_source_id, job_id, external_job_id,
+                        availability, provider_content_digest, extraction_fingerprint,
+                        first_seen_at, last_seen_at, last_verified_at)
+                    VALUES (80, 80, 80, 'posting-80', 'LIVE', 'digest', 'fingerprint',
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_source_sync_runs(id, job_source_id, trigger, status,
+                        started_at, completed_at, discovered_count)
+                    VALUES (80, 80, 'MANUAL', 'SUCCEEDED', TIMESTAMP '2026-01-31 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00', 1)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v8", null);
+        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT source.provider, source.routing_region, source.source_key,
+                           source.endpoint_host, source.last_successful_sync_at,
+                           source.created_at, source.updated_at,
+                           job.status, listing.availability, run.status, run.discovered_count
+                    FROM upgrade_v8.job_sources source
+                    JOIN upgrade_v8.external_job_listings listing ON listing.job_source_id = source.id
+                    JOIN upgrade_v8.jobs job ON job.id = listing.job_id
+                    JOIN upgrade_v8.job_source_sync_runs run ON run.job_source_id = source.id
+                    WHERE source.id = 80
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("LEVER", rows.getString(1));
+                assertEquals("GLOBAL", rows.getString(2));
+                assertEquals("preserved", rows.getString(3));
+                assertNull(rows.getString(4));
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(5).toLocalDateTime());
+                assertEquals(java.time.LocalDateTime.of(2026, 1, 1, 0, 0),
+                        rows.getTimestamp(6).toLocalDateTime());
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(7).toLocalDateTime());
+                assertEquals("APPLIED", rows.getString(8));
+                assertEquals("LIVE", rows.getString(9));
+                assertEquals("SUCCEEDED", rows.getString(10));
+                assertEquals(1, rows.getInt(11));
+            }
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'nvidia.wd5.myworkdayjobs.com', 'nvidia',
+                        'NVIDIAExternalCareerSite', 'en-US', 'NVIDIA', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            assertEquals("23505", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'nvidia.wd5.myworkdayjobs.com', 'nvidia',
+                        'NVIDIAExternalCareerSite', 'en-US', 'Duplicate', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23505", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, company_name,
+                        enabled, created_at, updated_at)
+                    VALUES ('LEVER', 'GLOBAL', 'preserved', 'Duplicate Lever', true,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, endpoint_host,
+                        tenant_key, site_key, locale, company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'GLOBAL', 'mixed', 'wd3.myworkdaysite.com', 'tenant', 'Site',
+                        'en-US', 'Mixed', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'NVIDIA.wd5.myworkdayjobs.com', 'nvidia', 'Site', 'en-US',
+                        'Bad Host', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, endpoint_host,
+                        tenant_key, site_key, locale, company_name, enabled, created_at, updated_at)
+                    VALUES ('LEVER', 'GLOBAL', 'lever', 'wd3.myworkdaysite.com', NULL, NULL, NULL,
+                        'Mixed Lever', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
         }
     }
 }

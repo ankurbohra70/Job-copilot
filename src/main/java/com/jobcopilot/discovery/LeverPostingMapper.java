@@ -20,7 +20,7 @@ final class LeverPostingMapper {
         this.extractionFingerprints = extractionFingerprints;
     }
 
-    LeverMappedListing map(JobSource source, LeverPosting posting, String extractorVersion) {
+    MappedExternalJobListing map(JobSource source, LeverPosting posting, String extractorVersion) {
         String title = requiredSingleLine(posting.title(), TITLE_MAX, "title");
         String location = location(posting.categories());
         String description = descriptions.assemble(posting.content());
@@ -29,8 +29,8 @@ final class LeverPostingMapper {
         String providerDigest = contentDigests.calculate(title, location, description, hostedUrl, applyUrl);
         String extractionFingerprint = description == null ? null
                 : extractionFingerprints.calculate(extractorVersion, description);
-        return new LeverMappedListing(posting.externalId(), title, source.companyName(), location,
-                hostedUrl, applyUrl, description, providerDigest, extractionFingerprint);
+        return new MappedExternalJobListing(posting.externalId(), title, source.companyName(), location,
+                hostedUrl, applyUrl, description, providerDigest, extractionFingerprint, JobSourceProvider.LEVER);
     }
 
     private static String location(LeverPosting.Categories categories) {

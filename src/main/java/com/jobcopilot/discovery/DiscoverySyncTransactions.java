@@ -110,7 +110,7 @@ class DiscoverySyncTransactions {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    PageResult persistPage(long sourceId, long runId, List<LeverMappedListing> mapped,
+    PageResult persistPage(long sourceId, long runId, List<MappedExternalJobListing> mapped,
             LocalDateTime observedAt) {
         Authority authority = authority(sourceId, runId);
         JobSource source = authority.run().jobSource();
@@ -119,7 +119,8 @@ class DiscoverySyncTransactions {
         int unchanged = 0;
         int reopened = 0;
         List<Observation> observations = new ArrayList<>(mapped.size());
-        for (LeverMappedListing value : mapped) {
+        for (MappedExternalJobListing value : mapped) {
+            if (value.provider() != source.provider()) throw new IllegalArgumentException("Listing provider mismatch");
             ExternalJobListing listing = listings.findByJobSourceAndExternalJobId(source, value.externalJobId())
                     .orElse(null);
             if (listing == null) {
@@ -174,13 +175,13 @@ class DiscoverySyncTransactions {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    JobSourceSyncResult succeed(long sourceId, long runId, Set<String> seenIds, LocalDateTime observedAt,
+    JobSourceSyncResult succeed(long sourceId, long runId, CompletedTraversal complete, LocalDateTime observedAt,
             MutableCounters counters) {
         JobSource source = lockedSource(sourceId);
         JobSourceSyncRun run = authority(sourceId, runId).run();
         int closed = 0;
         for (ExternalJobListing listing : listings.findByJobSource(source)) {
-            if (seenIds.contains(listing.externalJobId())) continue;
+            if (complete.seenIds().contains(listing.externalJobId())) continue;
             if (listing.availability() == ListingAvailability.LIVE) closed++;
             listing.recordVerification(ListingAvailability.CLOSED, listing.lastSeenAt(), observedAt);
         }
@@ -217,8 +218,8 @@ class DiscoverySyncTransactions {
     }
 
     private static void validateProvider(JobSource source, long sourceId) {
-        if (source.provider() != JobSourceProvider.LEVER) {
-            throw new IllegalArgumentException("Job source " + sourceId + " is not a Lever source");
+        if (source.provider() != JobSourceProvider.LEVER && source.provider() != JobSourceProvider.WORKDAY) {
+            throw new IllegalArgumentException("Job source " + sourceId + " has an unsupported provider");
         }
     }
 

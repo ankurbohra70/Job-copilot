@@ -133,6 +133,8 @@ class DiscoveryLeaseIntegrationTest {
         JobSource expired = source("expired", true);
         JobSource recent = source("recent", true);
         JobSource due = source("due", true);
+        JobSource workday = sources.saveAndFlush(new JobSource(JobSourceProvider.WORKDAY, null, null,
+                "Workday Company", true, "wd3.myworkdaysite.com", "tenant", "Site", "en-US"));
 
         transactions.startManual(active.id());
         var expiredRun = transactions.startManual(expired.id());
@@ -151,10 +153,11 @@ class DiscoveryLeaseIntegrationTest {
         Set<Long> candidates = sources.findScheduledCandidates(TimeUnit.HOURS.toMillis(1), 20).stream()
                 .map(ScheduledSyncCandidate::getSourceId).collect(java.util.stream.Collectors.toSet());
 
-        assertEquals(Set.of(never.id(), expired.id(), due.id()), candidates);
+        assertEquals(Set.of(never.id(), expired.id(), due.id(), workday.id()), candidates);
         assertFalse(candidates.contains(disabled.id()));
         assertFalse(candidates.contains(active.id()));
         assertFalse(candidates.contains(recent.id()));
+        assertTrue(candidates.contains(workday.id()));
     }
 
     @Test void claimTimeEligibilityRecoversExpiredImmediatelyAndManualTerminalResetsCadence() {
@@ -320,7 +323,7 @@ class DiscoveryLeaseIntegrationTest {
         JobSource source = source("fenced", true);
         var old = transactions.startManual(source.id());
         LocalDateTime observed = LocalDateTime.now();
-        LeverMappedListing original = mapped("one", "Original title", "digest-one", null);
+        MappedExternalJobListing original = mapped("one", "Original title", "digest-one", null);
         var page = transactions.persistPage(source.id(), old.runId(), List.of(original), observed);
         long listingId = page.observations().getFirst().listingId();
         long jobId = jdbc.queryForObject("SELECT job_id FROM external_job_listings WHERE id = ?", Long.class,
@@ -330,13 +333,14 @@ class DiscoveryLeaseIntegrationTest {
         var replacement = transactions.startScheduled(source.id());
         assertTrue(replacement.started());
 
-        LeverMappedListing changed = mapped("one", "Stale changed title", "digest-two", "new-fingerprint");
+        MappedExternalJobListing changed = mapped("one", "Stale changed title", "digest-two", "new-fingerprint");
         assertThrows(JobSourceSyncLeaseLostException.class, () -> transactions.persistPage(
                 source.id(), old.runId(), List.of(changed), LocalDateTime.now()));
         assertThrows(JobSourceSyncLeaseLostException.class, () -> transactions.extract(
                 source.id(), old.runId(), listingId, "new-fingerprint"));
         assertThrows(JobSourceSyncLeaseLostException.class, () -> transactions.succeed(
-                source.id(), old.runId(), Set.of(), LocalDateTime.now(), new MutableCounters()));
+                source.id(), old.runId(), new CompletedTraversal(Set.of()), LocalDateTime.now(),
+                new MutableCounters()));
         assertThrows(JobSourceSyncLeaseLostException.class, () -> transactions.fail(
                 source.id(), old.runId(), "PERSISTENCE_FAILURE", new MutableCounters()));
 
@@ -378,8 +382,9 @@ class DiscoveryLeaseIntegrationTest {
                 LocalDateTime.class, runId);
     }
 
-    private static LeverMappedListing mapped(String id, String title, String digest, String fingerprint) {
-        return new LeverMappedListing(id, title, "Company", "Remote", "https://jobs.example/" + id,
-                "https://jobs.example/" + id + "/apply", "Required: Java", digest, fingerprint);
+    private static MappedExternalJobListing mapped(String id, String title, String digest, String fingerprint) {
+        return new MappedExternalJobListing(id, title, "Company", "Remote", "https://jobs.example/" + id,
+                "https://jobs.example/" + id + "/apply", "Required: Java", digest, fingerprint,
+                JobSourceProvider.LEVER);
     }
 }

@@ -11,15 +11,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Objects;
 
 @Entity
-@Table(name = "job_sources", uniqueConstraints = @UniqueConstraint(
-        name = "uq_job_sources_identity", columnNames = {"provider", "region", "source_key"}))
+@Table(name = "job_sources")
 class JobSource {
     private static final int SOURCE_KEY_MAX_LENGTH = 100;
     private static final int COMPANY_NAME_MAX_LENGTH = 255;
@@ -33,11 +31,23 @@ class JobSource {
     private JobSourceProvider provider;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
-    private LeverRegion region;
+    @Column(name = "routing_region", length = 16)
+    private JobSourceRegion region;
 
-    @Column(name = "source_key", nullable = false, length = SOURCE_KEY_MAX_LENGTH)
+    @Column(name = "source_key", length = SOURCE_KEY_MAX_LENGTH)
     private String sourceKey;
+
+    @Column(name = "endpoint_host", length = 255)
+    private String endpointHost;
+
+    @Column(name = "tenant_key", length = 100)
+    private String tenantKey;
+
+    @Column(name = "site_key", length = 100)
+    private String siteKey;
+
+    @Column(length = 35)
+    private String locale;
 
     @Column(name = "company_name", nullable = false, length = COMPANY_NAME_MAX_LENGTH)
     private String companyName;
@@ -58,11 +68,32 @@ class JobSource {
     }
 
     JobSource(JobSourceProvider provider, LeverRegion region, String sourceKey, String companyName, boolean enabled) {
+        this(provider, region == null ? null : JobSourceRegion.valueOf(region.name()), sourceKey,
+                companyName, enabled, null, null, null, null);
+    }
+
+    JobSource(JobSourceProvider provider, JobSourceRegion region, String sourceKey, String companyName,
+            boolean enabled, String endpointHost, String tenantKey, String siteKey, String locale) {
         this.provider = Objects.requireNonNull(provider, "provider is required");
-        this.region = Objects.requireNonNull(region, "region is required");
-        this.sourceKey = normalizedSourceKey(sourceKey);
         this.companyName = requiredText(companyName, COMPANY_NAME_MAX_LENGTH, "companyName");
         this.enabled = enabled;
+        if (provider == JobSourceProvider.LEVER) {
+            this.region = Objects.requireNonNull(region, "region is required");
+            this.sourceKey = normalizedSourceKey(sourceKey);
+            if (endpointHost != null || tenantKey != null || siteKey != null || locale != null) {
+                throw new IllegalArgumentException("Lever source must not contain Workday configuration");
+            }
+        } else if (provider == JobSourceProvider.WORKDAY) {
+            if (region != null || sourceKey != null) {
+                throw new IllegalArgumentException("Workday source must not contain Lever configuration");
+            }
+            this.endpointHost = requiredCanonical(endpointHost, 255, true, "endpointHost");
+            this.tenantKey = requiredCanonical(tenantKey, 100, true, "tenantKey");
+            this.siteKey = requiredCanonical(siteKey, 100, false, "siteKey");
+            this.locale = requiredCanonical(locale, 35, false, "locale");
+        } else {
+            throw new IllegalArgumentException("unsupported provider");
+        }
     }
 
     @PrePersist
@@ -97,9 +128,13 @@ class JobSource {
 
     Long id() { return id; }
     JobSourceProvider provider() { return provider; }
-    LeverRegion region() { return region; }
+    JobSourceRegion region() { return region; }
     String sourceKey() { return sourceKey; }
     String companyName() { return companyName; }
+    String endpointHost() { return endpointHost; }
+    String tenantKey() { return tenantKey; }
+    String siteKey() { return siteKey; }
+    String locale() { return locale; }
     boolean enabled() { return enabled; }
     LocalDateTime lastSuccessfulSyncAt() { return lastSuccessfulSyncAt; }
     LocalDateTime createdAt() { return createdAt; }
@@ -123,6 +158,16 @@ class JobSource {
             throw new IllegalArgumentException(name + " is invalid");
         }
         return normalized;
+    }
+
+    private static String requiredCanonical(String value, int maximumLength, boolean lowercase, String name) {
+        Objects.requireNonNull(value, name + " is required");
+        if (value.isEmpty() || value.length() > maximumLength || !value.equals(value.strip())
+                || value.chars().anyMatch(Character::isISOControl)
+                || lowercase && !value.equals(value.toLowerCase(Locale.ROOT))) {
+            throw new IllegalArgumentException(name + " is invalid");
+        }
+        return value;
     }
 
     private static String trimAsciiSpaces(String value) {
