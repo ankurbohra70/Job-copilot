@@ -84,6 +84,7 @@ public class JobRankingService {
                 MatchingVocabulary.standard().version(),
                 candidate.parserVersion(),
                 candidate.assessedOn(),
+                candidate.revision(),
                 snapshots.size(),
                 computable.size(),
                 filtered.size(),
@@ -95,12 +96,7 @@ public class JobRankingService {
     }
 
     private static boolean passesPostMatchFilters(MatchResult result, JobRankingQuery query) {
-        BigDecimal minScore = query.minScore();
-        if (minScore != null && result.overallScore().compareTo(minScore) < 0) {
-            return false;
-        }
-        Set<MatchResult.Recommendation> recommendations = query.recommendations();
-        return recommendations.isEmpty() || recommendations.contains(result.recommendation());
+        return query.matches(result);
     }
 
     private static List<RankedJobResponse> pageSlice(List<RankedJobResponse> rankedJobs, int page, int size) {
@@ -114,15 +110,7 @@ public class JobRankingService {
     }
 
     private static int compareComputable(RankedComputation left, RankedComputation right) {
-        int score = right.result().overallScore().compareTo(left.result().overallScore());
-        if (score != 0) {
-            return score;
-        }
-        int created = right.snapshot().createdAt().compareTo(left.snapshot().createdAt());
-        if (created != 0) {
-            return created;
-        }
-        return right.snapshot().matching().id().compareTo(left.snapshot().matching().id());
+        return JobRankingOrder.compare(left.snapshot(), left.result(), right.snapshot(), right.result());
     }
 
     private record RankedComputation(JobRankingSnapshot snapshot, MatchResult result) {

@@ -30,12 +30,11 @@ public class DeterministicMatchingEngine {
         if (!hasSkills && !hasExperience) throw new MatchCannotBeComputedException();
         // Evidence is resolved once. The same sets drive both score and explanations.
         Set<String> recognized = new TreeSet<>(canonical(candidate.profile().skills()));
-        Set<String> textSkills = new HashSet<>(vocabulary.skills(candidate.extractedText()));
         List<String> requiredMatched = required.stream()
-                .filter(s -> recognized.contains(s) || textSkills.contains(s) || (!vocabulary.isKnownSkill(s) && vocabulary.contains(candidate.extractedText(), s)))
+                .filter(recognized::contains)
                 .toList();
         List<String> preferredMatched = preferred.stream()
-                .filter(s -> recognized.contains(s) || textSkills.contains(s) || (!vocabulary.isKnownSkill(s) && vocabulary.contains(candidate.extractedText(), s)))
+                .filter(recognized::contains)
                 .toList();
         List<String> missing = required.stream().filter(s -> !requiredMatched.contains(s)).toList();
         List<String> unmatched = preferred.stream().filter(s -> !preferredMatched.contains(s)).toList();
@@ -70,7 +69,8 @@ public class DeterministicMatchingEngine {
             if (experienceStatus == Status.MEETS_REQUIREMENT) strengths.add(explanation); else gaps.add(explanation);
         }
         List<String> jobRoles = vocabulary.roles(job.title());
-        List<String> candidateRoles = candidate.profile().roleCategories();
+        List<String> candidateRoles = candidate.profile().roleCategories().stream()
+                .map(MatchingVocabulary::normalize).filter(value -> !value.isEmpty()).distinct().toList();
         List<String> matchedRoles = jobRoles.stream().filter(candidateRoles::contains).toList();
         Relevance role;
         if (jobRoles.isEmpty()) role = new Relevance(Status.NOT_APPLICABLE, null, List.of());
@@ -81,7 +81,8 @@ public class DeterministicMatchingEngine {
             role = new Relevance(status, percent(value), matchedRoles);
         }
         List<String> jobKeywords = vocabulary.keywords(job.description());
-        List<String> candidateKeywords = vocabulary.keywords(candidate.extractedText());
+        List<String> candidateKeywords = candidate.profile().keywords().stream()
+                .map(MatchingVocabulary::normalize).filter(value -> !value.isEmpty()).distinct().sorted().toList();
         List<String> matchedKeywords = jobKeywords.stream().filter(candidateKeywords::contains).toList();
         Relevance keywords;
         if (jobKeywords.isEmpty()) keywords = new Relevance(Status.NOT_APPLICABLE, null, List.of());
@@ -124,8 +125,12 @@ public class DeterministicMatchingEngine {
     }
     private static BigDecimal percent(BigDecimal ratio) { return ratio.multiply(HUNDRED).setScale(2, RoundingMode.HALF_UP); }
     private Explanation skillEvidence(String code, String skill, CandidateMatchingSnapshot candidate) {
-        List<String> sources = candidate.extractedText().lines().filter(line -> vocabulary.hasSkill(line, skill)).limit(3).toList();
-        if (sources.isEmpty()) sources = candidate.profile().evidence().stream().filter(e -> e.value().equals(skill)).map(e -> e.sourceText()).toList();
+        List<String> sources = candidate.profile().evidence().stream()
+                .filter(e -> vocabulary.canonical(e.value()).equals(skill))
+                .map(e -> e.sourceText())
+                .filter(java.util.Objects::nonNull)
+                .limit(3)
+                .toList();
         return new Explanation(code, "Recognized evidence for " + skill, sources);
     }
     private static void explainRelevance(String category, Relevance relevance, List<Explanation> strengths, List<Explanation> gaps) {

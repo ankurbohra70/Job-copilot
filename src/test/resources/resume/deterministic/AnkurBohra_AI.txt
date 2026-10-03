@@ -1,0 +1,49 @@
+ANKUR BOHRA
+ 9315593938 # ankurbohra70@gmail.com ï Linkedin § Github  Leetcode
+Objective
+Enthusiastic and detail-oriented AI enthusiast with a strong academic foundation in Computer Science and real-world
+experience in Machine Learning, Deep Learning, and Data Analytics. Eager to contribute to impactful AI solutions leveraging
+data-driven decision-making and model optimization.
+Education
+National Institute of Technology, Tiruchirappalli 2021 – 2024
+Master of Computer Applications (MCA) - CGPA - 7.26 Trichy, Tamil Nadu
+Deen Dayal Upadhyaya College, University of Delhi 2018 – 2021
+B.Sc Honours Computer Science - CGPA - 7.47 New Delhi
+Higher Secondary XII (CBSE) - 89.75% 2016 – 2018
+Secondary X (ICSE), - 92.40% 2016
+Skills
+Languages: Python, C++, C
+AI/ML & Data Science: Scikit-learn, TensorFlow, Keras, ARIMA, LSTM, k-Means, Decision Trees
+Data Engineering:Apache Spark, Hadoop, Power BI, Tableau, MySQL, SQLite
+Foundational Knowledge: Data Structures & Algorithms, OOPs , DBMS, Operating System, Shell Programming
+Soft Skills: Management, Problem Solving, Critical thinking, Quality Assurance, Leadership, Team collaboration
+Projects
+DNA Sequencing Monitoring Diseases | Python, Deep learning, Time Series Analysis Project Link
+• Developed an LSTM-ARIMA hybrid model to predict disease progression based on genomic time-series data.
+• Integrated clinical and genomic datasets using bioinformatics pipelines for precision medicine applications.
+• Visualized large-scale data insights using Tableau and Power BI dashboards.
+Customer Behavior Analysis in Supermarkets | Python, ML, Hadoop, Apache Spark, Power BI Project Link
+• Applied Apriori and FP-Growth for association rule mining to uncover frequent itemsets and purchase sequences.
+• Clustered customers using k-means and classified behaviors with decision trees for personalized marketing.
+• Deployed Spark-based pipeline for efficient transaction processing and visualization with Power BI.
+Positions of Responsibility
+Vice President, Sanganika July 2020 - May 2021
+Department of Computer Science, DDUC, University of Delhi, New Delhi
+• Led 200+ members to organize 12+ national events for Tech-Marathon 2020, attracting 1500+ participants.
+• Oversaw logistics, sponsorships, promotions, and team coordination across departmental activities.
+Competitive Programmers Lead July 2020 - May 2021
+Codechef Chapter, DDUC, University of Delhi, New Delhi
+• Designed and administered coding contests including Code-Benders (400+ participants) and 10+ monthly events.
+• Conducted CP workshops and mentored 100+ students, focusing on algorithmic thinking and problem-solving.
+Achievements
+• Awarded Second Prize in Hardcode and Crack-and-Swap, inter-college coding competition, Annual Tech-fest of Shaheed
+Rajguru College, Delhi University, 2018
+• Won Second Prize in Blackbox, inter-college coding competition at Kalindi College, University of Delhi, 2018
+• Secured 98%ile in JEE MAINS among 15 lakhs candidates, 2018
+• Felicitated and awarded merit scholarship by school for securing second rank in CISCE Boards examination
+Extracurricular
+• Secured First Position in ‘Cover the News’ event in Talk 2 Learn’22 a cultural fest organized at NIT, Trichy
+• Awarded First Prize in ‘Mad-for-ad’, a sales pitch competition in Talk 2 Learn’22 at NIT, Trichy
+• Secured First Prize in Tech Wars in DDUC at Techmarathon’20 the Annual Tech Fest
+• Member of Sponsorship Team, Promotion Team and Logistics Team at Techmarathon’18, Annual Tech fest of DDUC
+• Member of Graphics team for the academic year 2018-19 in Kalamkaar, Literary Society, DDUC

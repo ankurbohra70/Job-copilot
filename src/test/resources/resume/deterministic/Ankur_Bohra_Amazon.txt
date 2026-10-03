@@ -1,0 +1,62 @@
+ANKUR BOHRA
++91-9315593938 | ankurbohra70@gmail.com
+LinkedIn | GitHub | LeetCode
+SUMMARY
+Software Development Engineer with 1 year of professional experience on MobiKwik's merchant engineering team,
+building and operating Java/Spring Boot systems for merchant operations, payment-device workflows, and transaction
+notifications. Shipped a greenfield platform serving 1,200+ agents and 5,000+ tasks/day and cut peak API latency from ~7s
+to <150ms through production root-cause analysis. Strong in data structures and algorithms with 500+ problems solved,
+with hands-on automated testing, AWS, event-driven systems, debugging, and full-stack development.
+EXPERIENCE
+MobiKwik - Software Development Engineer I | Gurgaon, India | Feb 2026 - Jul 2026
+• Owned end-to-end design, implementation, testing, and production delivery of a greenfield Java, Spring Boot, MySQL Field
+Service Management platform, shipped in 2 months for 1,200+ agents processing 5,000+ tasks/day across merchant
+operations.
+• Built maintainable REST APIs, transactional task workflows, deterministic assignment/state logic, and SQL aggregation APIs;
+also delivered backend workflows supporting merchant lending journeys and operational dashboards.
+• Troubleshot the platform's highest-latency production path with Grafana, identified synchronous database/audit work on the
+request path, and moved it to Spring @Async, reducing peak API latency from ~7s to <150ms.
+• Shipped 30+ post-launch reliability and performance improvements driven by monitoring and user pain points, including
+SQL/query optimization, composite indexing, pagination, Redis caching, aggregation queries, and defect resolution.
+• Instrumented services with Spring Boot Actuator, Micrometer, and Grafana; worked with product, frontend, business, and
+operations teams on requirements, API contracts, implementation trade-offs, releases, code review, testing, and post-release
+validation.
+MobiKwik - Software Development Engineer Intern | Gurgaon, India | Jul 2025 - Jan 2026
+• Developed and debugged Merchant Panel APIs for onboarding, dynamic forms, dashboards, and document workflows using
+Java, Spring Boot, PostgreSQL, and MongoDB, supporting merchant-facing production workflows.
+• Built a merchant Soundbox transaction ACK pipeline using AWS IoT/MQTT and Amazon SQS with asynchronous
+processing, database-level idempotency, retry/DLQ handling, and tuned failure processing; improved ACK speed by
+approximately 2x.
+• Consumed production Kafka payment events and called an internal notification service to send merchant-app transaction
+alerts; used retry with backoff and routed terminal failures to a DLQ.
+• Extended Soundbox localization from 2 to 5 languages, improving usability of the merchant payment-device experience.
+PROJECTS
+Job Copilot - AI Job Intelligence Platform | GitHub
+Java | Spring Boot | PostgreSQL | REST | Docker | JUnit/Mockito | Automated Regression & Integration Testing
+• Built production-style Spring Boot workflows for job ingestion, structured extraction, matching, ranking, and external ATS
+synchronization, with explicit validation and deterministic failure handling across service boundaries.
+• Built and repeatedly ran a 900+ test automated suite spanning unit, integration, regression, parity/golden, malformed-input,
+provider-failure, ordering, concurrency, idempotency, and recovery scenarios to detect regressions before milestone freezes.
+• Engineered correctness controls including transactional updates, optimistic revisioning, run fencing, leases/heartbeats, startup
+recovery, and exactly-once model invocation; used independent review and adversarial QA to validate changes before
+acceptance.
+Raahi - Full-Stack Ride Booking Platform | GitHub
+Java | Spring Boot | PostgreSQL | React Native | JavaScript | JWT | AWS
+• Built Spring Boot REST services and a React Native/JavaScript client with PostgreSQL, JWT authentication, role-based
+authorization, and transactional ride/wallet workflows.
+• Improved ride batching by 20% and reduced manual payment handling by 40% through batching and wallet auto-pay
+workflows.
+SKILLS
+Languages & Core CS: Java, C++, Python, JavaScript, SQL | Data Structures & Algorithms, OOP, Problem Solving
+Backend & Full Stack: Spring Boot, REST APIs, Microservices, JPA/Hibernate, Transaction Management, React Native
+Testing & Engineering Quality: JUnit, Mockito, Unit Testing, Integration Testing, Automated Regression Testing, Debugging,
+Root-Cause Analysis
+Data, Messaging & Reliability: MySQL, PostgreSQL, MongoDB, Redis, Kafka, Amazon SQS, AWS IoT/MQTT, Idempotency,
+Retry/DLQ, Async Processing
+Cloud & Tooling: AWS, Docker, Git, Maven, Grafana, Micrometer, Spring Boot Actuator
+EDUCATION
+National Institute of Technology, Tiruchirappalli - Master of Computer Applications | 2021-2024 | CGPA: 7.26
+University of Delhi, Deen Dayal Upadhyaya College - B.Sc. (Hons.) Computer Science | 2018-2021 | CGPA: 7.47
+ACHIEVEMENTS
+• Solved 500+ Data Structures & Algorithms problems; ranked 4,088 among 40,000+ participants in CodeChef Starters 59.
+• Vice President, Sanganika - led a 200+ member technical community and mentored 100+ students in DSA and System Design.

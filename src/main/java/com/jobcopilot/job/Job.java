@@ -22,7 +22,7 @@ import com.jobcopilot.job.dto.JobRequirementsResponse;
 
 @Entity
 @Table(name = "jobs")
-class Job {
+public class Job {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

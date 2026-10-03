@@ -166,12 +166,14 @@ class JobAssessmentServiceTest {
     }
 
     @Test
-    void rawCustomEvidenceAndUnknownObservedExperienceSurviveOrchestration() {
+    void structuredEvidenceAndUnknownObservedExperienceSurviveOrchestration() {
         var evidenceJob = jobSnapshot("Backend Engineer", "payments systems", List.of("Java", "custom-tool"), List.of("Redis"), "2");
-        var data = new CandidateProfileData(List.of(), null, 120, CandidateProfileData.Assessment.UNKNOWN,
-                List.of(), List.of(), List.of(), List.of(), List.of("backend"), List.of(), List.of("fixture-warning"));
+        var data = new CandidateProfileData(List.of("java", "custom-tool"), null, 120, CandidateProfileData.Assessment.UNKNOWN,
+                List.of(), List.of(), List.of(), List.of("payments", "systems"), List.of("backend"),
+                List.of(new CandidateProfileData.Evidence("SKILL", "custom-tool", "Confirmed project evidence")),
+                List.of("fixture-warning"));
         var evidenceCandidate = new CandidateMatchingSnapshot(2L, data,
-                "Built Java custom-tool payments systems", "historic-parser", "historic-vocabulary", LocalDate.of(2020, 1, 2));
+                "historic-parser", "historic-vocabulary", LocalDate.of(2020, 1, 2), 4);
         when(jobs.matchingSnapshot(1L)).thenReturn(evidenceJob);
         when(resumes.matchingSnapshot(2L)).thenReturn(evidenceCandidate);
         var liveEngine = org.mockito.Mockito.spy(new DeterministicMatchingEngine());
@@ -210,6 +212,7 @@ class JobAssessmentServiceTest {
                 MatchingVocabulary.standard().version(),
                 candidate.parserVersion(),
                 candidate.assessedOn(),
+                candidate.revision(),
                 job.updatedAt(),
                 result
         );
@@ -251,6 +254,6 @@ class JobAssessmentServiceTest {
                 parsed.evidence(),
                 parsed.warnings()
         );
-        return new CandidateMatchingSnapshot(2L, data, text, "rules-v1", "v1", LocalDate.of(2026, 9, 7));
+        return new CandidateMatchingSnapshot(2L, data, "rules-v1", "v1", LocalDate.of(2026, 9, 7), 1);
     }
 }

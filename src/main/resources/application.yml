@@ -33,3 +33,21 @@ job-intelligence:
     api-key: ${OPENAI_API_KEY:}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     connect-timeout: ${OPENAI_CONNECT_TIMEOUT:5s}
+job-discovery:
+  scheduling:
+    enabled: ${JOB_DISCOVERY_SCHEDULING_ENABLED:false}
+    tick-interval: ${JOB_DISCOVERY_SCHEDULING_TICK_INTERVAL:1m}
+    initial-delay: ${JOB_DISCOVERY_SCHEDULING_INITIAL_DELAY:30s}
+    sync-cadence: ${JOB_DISCOVERY_SCHEDULING_SYNC_CADENCE:1h}
+    concurrency: ${JOB_DISCOVERY_SCHEDULING_CONCURRENCY:2}
+    lease-timeout: ${JOB_DISCOVERY_SCHEDULING_LEASE_TIMEOUT:5m}
+    lease-heartbeat-interval: ${JOB_DISCOVERY_SCHEDULING_LEASE_HEARTBEAT_INTERVAL:30s}
+  lever:
+    connect-timeout: ${LEVER_CONNECT_TIMEOUT:5s}
+    request-timeout: ${LEVER_REQUEST_TIMEOUT:20s}
+    max-response-bytes: ${LEVER_MAX_RESPONSE_BYTES:10485760}
+  workday:
+    connect-timeout: ${WORKDAY_CONNECT_TIMEOUT:5s}
+    request-timeout: ${WORKDAY_REQUEST_TIMEOUT:20s}
+    max-search-response-bytes: ${WORKDAY_MAX_SEARCH_RESPONSE_BYTES:5242880}
+    max-detail-response-bytes: ${WORKDAY_MAX_DETAIL_RESPONSE_BYTES:2097152}

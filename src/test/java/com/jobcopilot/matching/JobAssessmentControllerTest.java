@@ -167,10 +167,10 @@ class JobAssessmentControllerTest {
                         parsed.workExperience(), parsed.education(), parsed.projects(),
                         parsed.keywords(), parsed.roleCategories(), parsed.evidence(), parsed.warnings()
                 ),
-                "Experience\nBackend Engineer at Acme\n2020-01 - 2023-01\nJava payments systems\nSkills\nJava PostgreSQL",
                 "rules-v1",
                 MatchingVocabulary.standard().version(),
-                LocalDate.of(2026, 9, 7)
+                LocalDate.of(2026, 9, 7),
+                2
         );
         var computed = engine.match(job, candidate);
         return new MatchResponse(

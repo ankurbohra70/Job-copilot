@@ -1,6 +1,5 @@
 package com.jobcopilot.resume;
 
-import com.jobcopilot.common.text.MatchingVocabulary;
 import com.jobcopilot.resume.dto.ResumeResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,12 +13,21 @@ import static com.jobcopilot.resume.ResumeExceptions.*;
 @Service
 public class ResumeService {
     private final ResumeTextExtractor extractor;
-    private final DeterministicProfileParser parser;
+    private final CandidateProfileExtractor profileExtractor;
     private final ResumePersistenceService persistence;
     private final ResumeProcessingProperties limits;
-    public ResumeService(ResumeTextExtractor extractor, DeterministicProfileParser parser,
+    private final CandidateFactsExtractor factsExtractor;
+    private final CandidateProfileValidator validator;
+    @org.springframework.beans.factory.annotation.Autowired
+    public ResumeService(ResumeTextExtractor extractor, CandidateProfileExtractor profileExtractor,
+            ResumePersistenceService persistence, ResumeProcessingProperties limits,
+            CandidateFactsExtractor factsExtractor, CandidateProfileValidator validator) {
+        this.extractor = extractor; this.profileExtractor = profileExtractor; this.persistence = persistence; this.limits = limits;
+        this.factsExtractor = factsExtractor; this.validator = validator;
+    }
+    public ResumeService(ResumeTextExtractor extractor, CandidateProfileExtractor profileExtractor,
             ResumePersistenceService persistence, ResumeProcessingProperties limits) {
-        this.extractor = extractor; this.parser = parser; this.persistence = persistence; this.limits = limits;
+        this(extractor, profileExtractor, persistence, limits, new DeterministicCandidateFactsExtractor(), new CandidateProfileValidator());
     }
     // Deliberately not transactional: untrusted PDF parsing never holds a DB transaction.
     public ResumeResponse upload(MultipartFile file) {
@@ -37,12 +45,14 @@ public class ResumeService {
         if (bytes.length < 5 || !new String(bytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) throw new UnsupportedResumeTypeException();
         var extraction = extractor.extract(bytes);
         LocalDate date = LocalDate.now(ZoneOffset.UTC);
-        var data = parser.parse(extraction.text(), date);
+        var profileExtraction = profileExtractor.extract(extraction.text(), date);
+        var canonicalProfile = validator.canonicalize(profileExtraction.profile());
+        var factExtraction = factsExtractor.extract(extraction.document(), canonicalProfile, date);
         String displayName = name.replace('\\', '/');
         displayName = displayName.substring(displayName.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
         if (displayName.length() > 255) displayName = displayName.substring(displayName.length() - 255);
-        return persistence.save(displayName, bytes.length, extraction.text(), extraction.pageCount(), extraction.version(),
-                data, date, DeterministicProfileParser.VERSION, MatchingVocabulary.standard().version());
+        return persistence.saveDraft(displayName, bytes.length, extraction, canonicalProfile, date,
+                profileExtraction.extractorVersion(), profileExtraction.vocabularyVersion(), factExtraction);
     }
 }
 

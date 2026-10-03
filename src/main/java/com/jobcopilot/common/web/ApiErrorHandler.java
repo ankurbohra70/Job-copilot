@@ -5,6 +5,18 @@ import com.jobcopilot.job.JobNotFoundException;
 import com.jobcopilot.job.JobRequirementExtractionException;
 import com.jobcopilot.matching.InvalidJobRankingQueryException;
 import com.jobcopilot.matching.JobRankingComputationException;
+import com.jobcopilot.discovery.JobSourceApiExceptions.DuplicateSource;
+import com.jobcopilot.discovery.JobSourceApiExceptions.InvalidQuery;
+import com.jobcopilot.discovery.JobSourceApiExceptions.InvalidSource;
+import com.jobcopilot.discovery.JobSourceApiExceptions.InvalidStoredSource;
+import com.jobcopilot.discovery.JobSourceApiExceptions.ListingNotFound;
+import com.jobcopilot.discovery.JobSourceApiExceptions.PersistenceFailure;
+import com.jobcopilot.discovery.JobSourceApiExceptions.RunNotFound;
+import com.jobcopilot.discovery.JobSourceApiExceptions.SourceDisabled;
+import com.jobcopilot.discovery.JobSourceApiExceptions.SourceNotFound;
+import com.jobcopilot.discovery.JobSourceApiExceptions.SynchronizationFailure;
+import com.jobcopilot.discovery.JobSourceApiExceptions.UnsupportedProvider;
+import com.jobcopilot.discovery.JobSourceSyncAlreadyRunningException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,6 +39,28 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 public class ApiErrorHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiErrorHandler.class);
 
+    @ExceptionHandler({InvalidQuery.class, InvalidSource.class, UnsupportedProvider.class})
+    public ResponseEntity<ApiErrorResponse> handleInvalidJobSource(RuntimeException exception) {
+        return badRequest(exception.getMessage());
+    }
+
+    @ExceptionHandler({SourceNotFound.class, RunNotFound.class, ListingNotFound.class})
+    public ResponseEntity<ApiErrorResponse> handleDiscoveryNotFound(RuntimeException exception) {
+        return error(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({DuplicateSource.class, SourceDisabled.class, InvalidStoredSource.class,
+            JobSourceSyncAlreadyRunningException.class})
+    public ResponseEntity<ApiErrorResponse> handleDiscoveryConflict(RuntimeException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler({PersistenceFailure.class, SynchronizationFailure.class})
+    public ResponseEntity<ApiErrorResponse> handleDiscoveryFailure(RuntimeException exception) {
+        log.error("Unexpected discovery operation failure type={}", exception.getClass().getSimpleName());
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+    }
+
     @ExceptionHandler(JobRankingComputationException.class)
     public ResponseEntity<ApiErrorResponse> handleRankingFailure(JobRankingComputationException exception) {
         log.error(exception.getMessage(), exception);
@@ -47,9 +81,18 @@ public class ApiErrorHandler {
         return error(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
-    @ExceptionHandler({ResumeNotFoundException.class, CandidateProfileNotFoundException.class})
+    @ExceptionHandler({ResumeNotFoundException.class, CandidateProfileNotFoundException.class,
+            PreferenceNotFoundException.class, ResumeRouteNotFoundException.class})
     public ResponseEntity<ApiErrorResponse> handleResumeNotFound(RuntimeException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+    @ExceptionHandler(ResumeRouteConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleResumeRouteConflict(ResumeRouteConflictException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+    @ExceptionHandler({CandidateProfileNotConfirmedException.class, CandidateProfileRevisionConflictException.class})
+    public ResponseEntity<ApiErrorResponse> handleCandidateProfileConflict(RuntimeException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
     }
     @ExceptionHandler({InvalidResumeFileException.class, MissingServletRequestPartException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidResume(Exception exception) {
@@ -102,6 +145,11 @@ public class ApiErrorHandler {
 
     @ExceptionHandler({InvalidJobQueryException.class, InvalidJobRankingQueryException.class})
     public ResponseEntity<ApiErrorResponse> handleInvalidJobQuery(RuntimeException exception) {
+        return badRequest(exception.getMessage());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidDomainValue(IllegalArgumentException exception) {
         return badRequest(exception.getMessage());
     }
 

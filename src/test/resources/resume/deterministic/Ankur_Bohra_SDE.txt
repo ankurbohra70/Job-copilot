@@ -1,0 +1,52 @@
+ANKUR BOHRA
+ 9315593938 # ankurbohra70@gmail.com ï Linkedin § Github  Leetcode
+Summary
+• Backend-focused Software Engineer skilled in Java, Spring Boot, and Microservices with hands-on experience building scalable,
+high-performance systems.
+• Strong in multithreading, exception handling, and debugging, with proven teamwork, communication, and problem-solving
+abilities.
+Education
+National Institute of Technology, Tiruchirappalli 2021 – 2024
+Master of Computer Applications (MCA) - CGPA: 7.26 Trichy, India
+Deen Dayal Upadhyaya College, University of Delhi 2018 – 2021
+B.Sc (Hons) Computer Science - CGPA: 7.47 New Delhi, India
+Experience
+Software Development Engineer Intern July 2025 – Present
+Mobikwik Gurgaon, India
+– Engineered and deployed 5 feature-rich tabs on the MerchantPanel dashboard, reducing merchant data operation time by
+30% and improving efficiency for over 10,000 active merchants.
+– Diagnosed and resolved a critical latency bottleneck in the soundbox transactional system, achieving 2x faster response
+times and ensuring more reliable payments.
+– Integrated features across MerchantPanel, MerchantBackend, MerchantDevices repositories, resulting in a 25% re-
+duction in bug reports during production releases.
+– Worked with Java (multithreading, exception handling), Spring Boot, AWS IoT, and MQTT protocol, focusing
+on backend development, cloud integration, and real-time communication.
+Projects
+Raahi App | Spring Boot, PostgreSQL, React Native, Google Maps Link
+– Engineered a ride-sharing platform with multi-ride scheduling, handling 5,000+ rides monthly and boosting cab utilization
+efficiency.
+– Designed and implemented an n-batching algorithm that optimized real-time ride grouping, improving booking efficiency
+by 20% and reducing passenger costs.
+– Built and integrated a secure e-wallet system with automated invoicing and payments, cutting manual transactions by 40%
+and enhancing user trust.
+Personalized Travel Recommender | Java, Spring Boot, PostgreSQL, Redis, AWS Link
+– Architected and developed a full-stack platform offering personalized destination, itinerary, and accommodation recommen-
+dations based on user profiles.
+– Designed, built, and deployed RESTful APIs in Spring Boot for user management, bookings, and reviews, integrating with
+external Weather, Maps, and Booking APIs.
+– Optimized backend performance with Redis caching and AWS auto-scaling, reducing response times by 40% and im-
+proving reliability under high traffic.
+Skills
+• Programming: Java, C++, Python, JavaScript, SQL
+• Backend & Frameworks: Spring Boot, Node.js, Express.js, RESTful APIs, Microservices, MVC Design Patterns
+• Frontend: React.js, HTML5, CSS3, Bootstrap
+• Databases: MySQL, PostgreSQL, MongoDB, SQLite
+• Cloud & Tools: AWS (IoT, EC2, S3), MQTT, Docker, CI/CD, Kubernetes, Git/GitHub
+• Core CS: Data Structures & Algorithms, OOP, DBMS, Operating Systems, Computer Networks
+• Professional: Problem-Solving, Debugging & Analytical Skills, Communication, Team Collaboration, Passion to Learn
+Leadership & Achievements
+• Vice President of Sanganika and Competitive Programmers Lead at DDUC; directed 200+ students, organized Tech-Marathon
+with 1500+ participants, and delivered CP workshops impacting 100+ students.
+• Secured top positions in inter-college coding competitions (Hardcode, Crack-and-Swap, Blackbox) and awarded prizes in
+multiple tech events across DU and NIT Trichy.
+• Felicitated with a merit scholarship for securing Rank 2 in CISCE Board Exams.

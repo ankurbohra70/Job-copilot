@@ -2,7 +2,7 @@
 
 Job Copilot is an AI-powered job search workspace intended to help candidates discover, evaluate, tailor for, prepare for, and track job applications.
 
-The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, and JC-006 on-demand single-job assessment:
+The backend currently covers job management plus JC-003 resume extraction, JC-004 matching/ranking, JC-005 job-requirement extraction, JC-006 on-demand single-job assessment, and JC-008 manual and scheduled Lever discovery:
 
 ```text
 HTTP → JobController → JobService → JobRepository → JPA/Hibernate → PostgreSQL
@@ -41,7 +41,7 @@ Job APIs still support creation, retrieval, replacement, status changes, deletio
 | `POST` | `/api/jobs/{id}/assessment` | Assess one stored job against an explicit candidate profile (not persisted) |
 | `POST` | `/api/matches` | Compatibility alias for the same single-job assessment |
 
-Authentication, job ingestion, OCR, LLM/embedding matching, candidate profile editing, application automation, and a frontend are out of scope.
+Authentication, OCR, LLM/embedding matching, application automation, and public multi-user access are out of scope. JC-011 adds a private V1 thin client in `web/`.
 
 ## Prerequisites
 
@@ -91,6 +91,29 @@ The automated tests exercise the controller/API contract, error mappings, servic
 ```
 
 On macOS/Linux, use `./mvnw spring-boot:run`. The API starts at `http://localhost:8080`.
+
+## Run the V1 UI (JC-011)
+
+The UI is a Vite + React app in `web/`. It is a thin client over the existing API. Dev mode proxies `/api` to `http://localhost:8080`, so start the backend first.
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. `VITE_API_BASE_URL` is public client configuration only (empty means same origin / the Vite proxy). Do not put API keys or database credentials in `VITE_*` variables.
+
+Frontend checks:
+
+```powershell
+cd web
+npm test
+npx playwright install chromium
+npm run e2e
+```
+
+Private V1 production packaging: build `web/dist` and serve it same-origin with the API over HTTPS. Split-origin hosting would need a backend CORS allowlist and is not required for this increment. This UI is for a single-user private workspace. Public or multi-user exposure requires authentication and per-user authorization first.
 
 ## Create a job
 
@@ -282,14 +305,66 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V1 | `V1__create_jobs.sql` | Jobs table matching the Week-1 schema, including `status` |
 | V2 | `V2__add_job_requirements.sql` | `min_years_experience` and `job_skills` |
 | V3 | `V3__add_resume_profiles.sql` | `resumes` and `candidate_profiles` |
+| V4 | `V4__add_job_discovery_domain.sql` | External job sources, listings, liveness, and synchronization-run state |
+| V5 | `V5__add_listing_extraction_fingerprint.sql` | Version-aware deterministic extraction currency |
+| V6 | `V6__add_sync_run_lease.sql` | Lease-based run ownership and crash recovery |
+| V7 | `V7__add_application_readiness_foundations.sql` | Candidate search policy, resume routes, and readiness foundations |
+| V8 | `V8__add_candidate_profile_authority.sql` | Confirmed candidate authority, revisioning, and search-intent ownership |
+| V9 | `V9__add_workday_job_sources.sql` | Provider-neutral source routing plus checked Workday host/tenant/site/locale identity |
+| V10 | `V10__add_candidate_fact_extraction.sql` | Nullable layout/facts capability versions, editable professional links, immutable original fact evidence |
 
-A new empty database migrates V1 through V3 automatically on startup. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before V2/V3 can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V10 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences, V9 preserves existing Lever identities while adding provider-shaped Workday source configuration, and V10 adds candidate-fact extraction storage without backfilling historical rows. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
 ```powershell
 docker compose exec postgres psql -U job_copilot -d job_copilot -c "SELECT installed_rank, version, description, success FROM flyway_schema_history ORDER BY installed_rank;"
 ```
+
+## JC-008 Phase 1 discovery persistence
+
+Phase 1 models configured Lever sources, external listing identity and `LIVE`/`CLOSED` availability, and
+future synchronization-run state. Listing availability is separate from the user's `JobStatus`: for example,
+an applied job may later have a closed provider listing. Verification timestamps live on the external listing,
+so updating them does not change the job's `updatedAt` assessment metadata.
+
+PostgreSQL enforces source identity, per-source external posting identity, one external listing per local job,
+non-negative synchronization counters, safe bounded failure codes, and at most one `RUNNING` synchronization
+per source. Deleting a job cascades only its external-listing metadata; deleting a source with listing or run
+history is restricted.
+
+Phase 1 contains no network behavior, mapping, digest calculation, reconciliation, requirement-extraction
+integration, discovery endpoint, ranking/assessment change, or scheduler.
+
+## JC-008 Phase 2 Lever network boundary
+
+Phase 2 adds a synchronous, persistence-free Lever Postings API connector. One invocation accepts an already
+canonical Lever site key, a `GLOBAL` or `EU` region, and one `skip`/`limit` page. It performs one bounded request
+with redirects and retries disabled, then returns immutable provider data or a sanitized typed failure.
+
+The connector does not load or mutate discovery entities, traverse pages, reconcile listings, map canonical jobs,
+extract requirements, assess or rank jobs, schedule synchronization, or expose a controller. Unknown optional
+provider fields and vocabulary are tolerated, while posting identity, required URLs, JSON structure, and response
+memory are validated.
+
+Normal tests use a local HTTP server. The opt-in real-provider acceptance test calls the current Lever GLOBAL and
+EU demo feeds and is excluded from normal CI:
+
+```powershell
+.\mvnw.cmd "-Djobcopilot.lever.live=true" `
+  "-Dtest=LeverPostingGatewayLiveAcceptanceTest" test
+```
+
+## JC-008 Phase 3 Lever synchronization
+
+Phase 3 adds an internal synchronous synchronizer for one configured Lever source. Network requests occur outside
+database transactions; run start, each page, each requirement extraction, finalization, and failure terminalization
+use independent transactions. Presence from a valid page can remain after a later failure,
+while reconciliation and `lastSuccessfulSyncAt` advance only after a complete, duplicate-free traversal.
+
+The synchronizer preserves listing and canonical Job identity across refresh, closure, and reopening, and never
+changes the user-owned Job application status. It has no controller, scheduler, queue, background worker, generic
+provider abstraction, or matching/ranking redesign.
 
 ## Resume upload and candidate profiles
 
@@ -302,7 +377,7 @@ Limitations:
 - Incomplete employment chronology is stored as `UNKNOWN` experience, not as zero years.
 - Extracted text is persisted for later reprocessing. Raw PDF bytes are not stored.
 - Normal API responses do not include the full extracted text.
-- Candidate corrections are deferred; JC-003 extraction is read-only.
+- Uploads create a DRAFT with supported contact suggestions; review and confirmation make candidate facts authoritative.
 
 Windows PowerShell:
 
@@ -318,6 +393,44 @@ curl -i -X POST http://localhost:8080/api/resumes \
 ```
 
 Expected status: `201 Created` with `Location: /api/resumes/{id}`. Use `GET /api/resumes/{id}` and `GET /api/candidate-profiles/{id}` to retrieve metadata and the structured profile.
+
+### Observational layout and candidate facts
+
+New uploads retain `extractorVersion=pdfbox-3.0.8`, `parserVersion=rules-v5`, and `vocabularyVersion=v1`,
+and record independent `layoutVersion=layout-v2` and `factExtractorVersion=facts-v1`. The layout observer
+delegates PDFBox text emission unchanged. Only that legacy text is passed to rules-v5; layout is never used
+to reconstruct it. Full layout geometry and PDF bytes are not persisted.
+
+facts-v1 considers only bounded first-page header/contact context for name, email, phone, location, and
+professional links. Conflicting scalar candidates remain null. Explicit international phones are validated
+and normalized with Google libphonenumber 9.0.40; supported countryless contact numbers remain readable raw
+values without an assumed country. Current title comes only from exactly one ongoing parsed work entry with
+a nonblank title and no explicit future start. It is not recomputed during confirmation.
+
+`facts.professionalLinks` is an editable list of `{type,url}` with types `LINKEDIN`, `GITHUB`, `LEETCODE`,
+`WEBSITE`, and `OTHER`. Limits are 20 links and 2048 characters per URL. HTTP(S) only, hostname/profile-path
+validation, HTTPS for schemeless URLs, credential/fragment removal, and deduplication apply. Project links
+and hidden annotations without supported visible header context are excluded from suggestions. Omitted
+links clear the list under existing full-replacement semantics.
+
+Profile responses include read-only `factExtraction`: original suggestions, bounded evidence, and diagnostic
+codes. Evidence stays attached to the original extraction through correction, clearing, confirmation, and
+ordinary updates; it does not attest to later corrected values. It cannot be supplied in confirmation requests.
+Review shows draft suggestions and editable links, including reload and stale-revision reconciliation.
+Direct downstream fact consumption, like matching, requires a confirmed profile.
+
+Metadata capture is capped at 200,000 positions, 20,000 lines, and 500 URI annotations. Unsupported geometry,
+rotated text/header context, or capture limits disable layout-derived suggestions while retaining valid legacy
+extraction and structured parsing. Evidence snippets are at most 512 characters, with at most 50 items and
+16,000 total source-text characters. No discovered URL is fetched and contact/evidence data is not logged.
+
+V10 adds nullable layout/facts versions, professional-links JSONB, and fact-extraction JSONB. There is no
+historical backfill or re-extraction; rules-v1 through rules-v5 records retain their data and versions. Newly
+written resume/profile timestamps use database microsecond precision so upload and GET responses agree.
+Sensitive declarations, notice period, relevant experience, and search preferences remain manual.
+
+The profile text-entry Space/Enter normalization bug is a separate ticket and remains unchanged. New link
+controls keep raw typing state and trim at submission.
 
 ## Job matching requirements
 
@@ -770,6 +883,252 @@ and a 45-second per-attempt deadline. The strict local decoder and validator rem
 three calls and never retries, repairs, or falls back. No production persistence, API, matching, ranking, or
 canonical-authority behavior is changed.
 
+## JC-008 Phase 4 (manual discovery API)
+
+Phase 4 exposes the existing synchronous Lever discovery pipeline through `/api/job-sources`. A caller can
+create and inspect Lever sources, enable or disable future synchronization, manually synchronize a source,
+inspect source-scoped run history, and browse LIVE or CLOSED external listings. Listing responses provide the
+linked canonical `jobId`, the independent canonical `jobStatus`, version-aware extraction currency, and ranking
+readiness. Canonical job details and requirements continue through `/api/jobs/{jobId}` and
+`/api/jobs/{jobId}/requirements`.
+
+Manual synchronization runs in the request thread. Expected provider failures return HTTP 200 with an audited
+terminal `FAILED` run and a safe failure code; local missing, disabled, or conflicting source state remains a
+4xx API error. The API layer does not wrap synchronization in an outer transaction: the JC-008 Phase 3 short
+transactions and transaction-free provider calls remain authoritative.
+
+There is no application authentication or authorization layer. These endpoints have the same deployment and
+network access assumptions as all existing APIs. Phase 4 itself adds no scheduled work, retries, alternate
+provider, or availability-aware ranking behavior.
+
+## JC-008 Phase 5 (scheduled synchronization and hardening)
+
+Phase 5 adds opt-in scheduled synchronization while retaining `LeverJobSourceSynchronizer` as the single manual
+and scheduled traversal authority. One lightweight tick per application instance polls history-derived eligible
+sources. Accepted work runs on a dedicated fixed-size executor with a synchronous handoff and no accumulating
+queue. `JOB_DISCOVERY_SCHEDULING_CONCURRENCY` is a per-process limit, not a fleet-wide cap. An executor rejection
+creates no run and leaves the source eligible for a later tick.
+
+Scheduling is disabled by default. When enabled, a never-run source is immediately eligible; otherwise the most
+recent terminal attempt, including a manual attempt, starts the global cadence. An unexpired active run is
+skipped. An expired active run is abandoned as `LEASE_EXPIRED` and replaced immediately without waiting for the
+cadence. There are no immediate provider retries: provider and traversal failures are audited and the next normal
+eligible cycle is the next attempt.
+
+Every `RUNNING` run has a database-time lease. Locally executing manual and scheduled runs are registered with an
+independent heartbeat that remains active even when scheduled polling is disabled. Page writes, extraction,
+reconciliation, counters, and terminalization lock and validate the exact run ID before canonical mutation, then
+renew from PostgreSQL time before commit where the run remains active. A crashed process therefore stops renewing;
+a future claimant can recover its expired run without a blanket application-startup sweep. Starting another
+healthy application instance cannot abandon an unexpired run.
+
+After a genuine stall, two processes may repeat a provider read. This is intentional: the stale process is fenced
+from subsequent canonical writes, so duplicate provider reads do not become duplicate canonical mutation. Logs
+carry safe source/run/trigger, admission or eligibility outcome, terminal status, failure classification, duration,
+and counters; provider bodies and sensitive URL query data are not logged.
+
+Terminal adversarial QA is a separate release gate after implementation verification. It must challenge migration,
+multi-instance same-source races, independent-source progress, crash recovery, provider failure, partial traversal,
+closure/reopening, extraction preservation, transaction boundaries, REST compatibility, and scheduler-disabled
+behavior before JC-008 is frozen.
+
+## JC-010 Phase 1 (Workday source and network boundary)
+
+Phase 1 adds `WORKDAY` source configuration and a synchronous, persistence-free connector for one public CXS
+search page or one job-detail response. It does **not** traverse a complete site, map or persist listings, extract
+requirements, reconcile closures, or integrate Workday with manual/scheduled synchronization. Enabled Workday
+sources are deliberately excluded from scheduled claims until the shared Phase 3 dispatcher exists; attempting a
+manual Workday sync returns the existing conflict contract without creating a run.
+
+A Workday source is identified explicitly by:
+
+- `endpointHost`: a lowercase public host ending in `.myworkdayjobs.com` or `.myworkdaysite.com`;
+- `tenantKey`: the lowercase CXS tenant path segment;
+- `siteKey`: the case-preserving external-career-site path segment;
+- `locale`: a canonical language tag such as `en-US`, sent as `Accept-Language` and included in source identity.
+
+Arbitrary/custom hosts are not accepted in Phase 1. Scheme, port, user info, path, query, fragment, control
+characters, dot segments, and mixed Lever/Workday configuration are rejected. PostgreSQL independently enforces
+provider-shaped nullable fields and unique identities. Existing Lever API JSON keeps `region` and `sourceKey`; its
+stored `region` column is migrated without data loss to provider-neutral `routing_region`.
+
+Example source request:
+
+```json
+{
+  "provider": "WORKDAY",
+  "companyName": "Example Company",
+  "enabled": true,
+  "endpointHost": "example.wd5.myworkdayjobs.com",
+  "tenantKey": "example",
+  "siteKey": "External_Career_Site",
+  "locale": "en-US"
+}
+```
+
+### Observed CXS contract and limits
+
+Reconnaissance on 2026-09-16 covered public sites for Workday (`wd5.myworkdayjobs.com`), NVIDIA
+(`wd5.myworkdayjobs.com`), Salesforce (`wd12.myworkdayjobs.com`), and Telesure
+(`wd3.myworkdaysite.com`). This is an observed browser-facing contract, not an officially guaranteed Workday API.
+No CAPTCHA, WAF, or access restriction was bypassed.
+
+- Search used `POST /wday/cxs/{tenant}/{site}/jobs` with `appliedFacets`, `limit`, `offset`, and empty
+  `searchText`. The observed maximum `limit` was 20; 0, 21, 100, and 101 returned HTTP 400.
+- Search responses contained integer `total`, `jobPostings`, tenant-specific `facets`, and authentication state.
+  Posting rows contained title, relative `/job/...` path, location/posted display text and bullet fields; remote
+  type was optional. Salesforce's `External_Career_Site` also returned an observed non-posting marker with exactly
+  one nonempty `bulletFields` array; it consumes a pagination slot and is handled without relaxing posting fields.
+- `total` is **not** stable across pages: all four sites returned their count at offset 0 but `0` at offset 2 while
+  returning jobs. Traversal captures the initial total as a bounded raw-slot consistency check, ignores later zero
+  totals, and requires an actually short/empty terminal page before reconciliation; only complete traversal is
+  closure authority.
+- Detail used one `GET` to the search-returned path below the same CXS tenant/site. Across the four tenants it
+  consistently exposed an opaque `id`, title, HTML description, posting/application flags, site/posting/requisition
+  identifiers, and a canonical external URL; optional location, remote type, dates, end-date, logo, country, and
+  additional-location fields varied.
+- Invalid site and job probes produced JSON HTTP 400 and 404 respectively. Redirects are not followed. 408, 429,
+  and 5xx responses have deterministic sanitized classifications.
+- During the explicitly gated acceptance run on 2026-09-16, Workday's own tenant timed out at the configured
+  20-second one-shot limit and NVIDIA returned HTTP 302 to Workday's public maintenance page. The client neither
+  followed nor retried those responses. These outcomes validate failure handling but do **not** count as a live
+  acceptance pass for those wd5 tenants. The same gated search/detail test passed against Telesure's
+  `wd3.myworkdaysite.com` tenant in 3.744 seconds and passed again in 3.112 seconds after the adversarial
+  URL-validation hardening; the wd5 cases must still be rerun outside maintenance.
+
+The boundary requires JSON media types, strict duplicate-key/trailing-token handling, maximum nesting/string/name/
+number/token limits, search/detail byte caps, same-host HTTPS external URLs, source-site consistency when present,
+observed site-path consistency even when the optional site ID is absent, encoded slash/backslash/dot/percent
+rejection, and no more postings than requested. Malformed or empty detail paths fail before request construction.
+It makes exactly one HTTP attempt, with OkHttp redirects, connection replay,
+and its special `503 Retry-After: 0` follow-up disabled. The byte caps apply after transparent gzip decoding.
+Bodies, detail paths, full URLs, and descriptions are not logged; Workday data and detail-request diagnostic
+`toString()` values are redacted to prevent accidental caller logging. Provider HTML remains untrusted data;
+deterministic sanitization/mapping belongs to Phase 2.
+
+### Posting identity evidence
+
+Observed details provided three different candidates: opaque `jobPostingInfo.id`, `jobPostingId`, and `jobReqId`.
+All four samples had distinct opaque 32-character identifiers, while posting IDs included slugs and requisition
+IDs were human-facing. This is insufficient evidence of stability across edits, locales, reposts, closure/reopen,
+or multiple external sites. Phase 1 intentionally exposed all candidates without selecting or persisting an
+`external_job_id`; identity was not frozen at that stage. The later selection, repeated/sanctioned evidence, and
+V1 Beta acceptance amendment are recorded in the Phase 5 terminal status below.
+
+Normal tests use sanitized multi-tenant fixtures and local HTTP servers. The live boundary test is skipped unless
+both the boolean gate and all source coordinates are supplied explicitly:
+
+```powershell
+.\mvnw.cmd "-Djobcopilot.workday.live=true" `
+  "-Djobcopilot.workday.live.host=example.wd5.myworkdayjobs.com" `
+  "-Djobcopilot.workday.live.tenant=example" `
+  "-Djobcopilot.workday.live.site=External_Career_Site" `
+  "-Djobcopilot.workday.live.locale=en-US" `
+  "-Dtest=WorkdayPostingGatewayLiveAcceptanceTest" test
+```
+
+Known uncertainties are custom-domain support, whether locale changes representation or posting identity, opaque-ID
+stability, closure/repost races, robots/customer authorization, and rate/WAF behavior under complete traversal.
+
+### JC-010 Phase 5 terminal status (2026-09-21)
+
+The Salesforce production-page-size incompatibility is resolved by strict recognition of its observed non-posting
+marker while retaining raw pagination-slot accounting. The exact Salesforce boundary acceptance now passes. A
+disposable-database live acceptance also completed the 43-posting Telesure board twice: the first synchronization
+created 43 listings and the second reported 43 unchanged with the full external-ID/listing-ID map preserved.
+
+JC-010 is **complete and frozen for V1 Beta**. `jobPostingInfo.id` has repeated multi-site and whole-board identity
+evidence, complete live synchronization/resynchronization passed, and the final `mvn verify` passed. Because no
+sanctioned controllable Workday posting was available, provider identity reuse through edit, close/reappearance,
+repost, site transfer, or locale change is explicitly accepted as a post-launch external limitation rather than
+claimed as proven. See `JC-010-PHASE5-QA.md` for the evidence, rationale, exact commands, and terminal decision.
+
+## Candidate application readiness foundations
+
+The application layer remains separate from job lifecycle, matching, and ranking. Candidate profiles contain
+typed authoritative contact, capability, and candidate-owned facts. Work authorization and sponsorship remain
+explicitly `UNKNOWN` until supplied; neither resume parsing nor an LLM fills them silently. Resume uploads create
+`DRAFT` profiles at revision 1. `PUT /api/candidate-profiles/{id}/confirmation` performs a complete validated
+replacement of structured profile data and candidate facts using `expectedRevision`, transitions the profile to
+`CONFIRMED`, and rejects stale writes. Existing profiles are backfilled as confirmed, while explicit manual
+profiles remain confirmed on creation.
+
+Matching accepts only a confirmed `CandidateMatchingSnapshot` built from structured profile data. Skills,
+keywords, observed roles, and total experience are read directly from that snapshot; stored resume text and
+provenance evidence cannot create a match. The former relevant-experience overlay has been removed, so
+`CandidateProfileData.totalExperienceMonths` is the sole scoring experience value. Profile revision is returned
+with assessment, ranking, and opportunity results so callers can identify the evaluated authority.
+Complete profile replacements are normalized before revision comparison and are bounded to 5,000 aggregate
+collection items and 500,000 aggregate text characters to prevent nested-list amplification.
+
+Search policy is stored separately in `job_search_preferences` and normalized child tables for target/excluded
+roles, locations, and accepted work arrangements. Relocation willingness and compensation expectations are also
+search intent and are authoritative only there; V8 preserves and moves pre-existing V7 values. Resume extraction
+is routed through `CandidateProfileExtractor`, whose only production implementation is deterministic, and never
+creates search preferences. Resume routing references an existing immutable resume record,
+records a `VOLUME` or `PRECISION` strategy, and requires an explicit approved route before readiness can be `READY`.
+The referenced source resume is never overwritten.
+
+Both candidate-profile and job-search-preference `PUT` operations are full replacements. Omitted candidate facts
+are cleared, and omitted sensitive tri-state facts return to `UNKNOWN`; preference child collections are replaced,
+trimmed, and deduplicated case-insensitively. They are never merged implicitly.
+
+Minimal API surface:
+
+- `POST /api/candidate-profiles` and `PUT /api/candidate-profiles/{id}` create or replace candidate facts.
+- `PUT /api/candidate-profiles/{id}/confirmation` confirms or fully corrects structured profile authority with optimistic concurrency.
+- `GET|PUT /api/candidate-profiles/{id}/job-search-preference` reads or replaces search policy.
+- `GET|POST /api/candidate-profiles/{id}/resume-routes` lists or creates traceable routes.
+- `GET /api/jobs/{id}/application-decision?candidateProfileId={profileId}` returns an explainable deterministic action.
+- `GET /api/jobs/{id}/application-readiness?candidateProfileId={profileId}` returns the overall readiness state and
+  structured checks.
+- `GET /api/candidate-profiles/{id}/opportunities` ranks provider-neutral JC-008 `LIVE`, extraction-current jobs in
+  `DISCOVERED` or `SHORTLISTED` state and projects the existing decision and readiness results without persisting
+  computed output. It accepts ranking-compatible `minScore`, `recommendation`, `page`, and `size` filters plus an
+  optional `readiness` filter; job status is fixed by live-opportunity eligibility.
+
+Decision policy `application-decision-v1` maps the existing matcher without recalculating it: not recommended jobs
+are `SKIP`, weak matches are `SAVE`, good matches are `APPLY_VOLUME`, and strong matches are `APPLY_PRECISION`.
+Missing work-authorization, sponsorship, or search-policy facts yield `NEEDS_USER` only for decisions that would
+otherwise apply; `SKIP` and `SAVE` do not demand application-only facts. Readiness additionally requires a live
+JC-008 listing within the configured `freshnessDays` window, a hierarchical HTTP(S) application URL with a host,
+a permissible job lifecycle state, candidate name/email, compatible/known authorization facts, and an approved
+route to a validated resume record. Compensation is checked when configured but is not a blocker while job-side
+compensation input requirements are unmodeled. Any hard failure yields `NOT_READY`; otherwise a required
+candidate-owned unknown yields `NEEDS_USER`; only all applicable passes yield `READY`. Multi-query readiness reads
+use one read-only PostgreSQL repeatable-read snapshot.
+
+Location matching is deliberately conservative: configured locations match the complete provider location or an
+exact comma/semicolon/parenthesized component; substring collisions do not count. Work-authorization jurisdiction
+and job-side sponsorship capability are not yet modeled, so ambiguous cases remain user-owned rather than inferred.
+Resume routes prove an approved immutable database record and reject obviously invalid legacy records. Raw PDF bytes
+are still not retained, so a later application-execution increment must add a durable artifact/re-upload gate before
+claiming that a routed resume can be uploaded automatically.
+
+No application, application attempt, answer bank, generated wording, browser automation, or submission state is
+created by this increment.
+
+## JC-009 offline evaluation
+
+JC-009 includes a deliberately small, test-only evaluation foundation under
+`src/test/java/com/jobcopilot/evaluation` with human-reviewed, versioned labels in
+`src/test/resources/jc009/evaluation/v1`. It executes the released deterministic candidate extractor, JC-005
+job-requirement extractor, JC-006 matcher/ranking order, and existing application decision/readiness policies.
+It reports through assertions: exact field and state accuracy; set precision, recall, and F1; exact and
+within-tolerance experience accuracy; false-positive and abstention rates; score/recommendation parity and
+boundary errors; Precision@K and nDCG@K; per-state confusion counts; and false-skip/false-apply rates.
+
+Run only the JC-009 offline evaluation with:
+
+```powershell
+./mvnw.cmd "-Dtest=Jc009*EvaluationTest,Jc009EvaluationFoundationTest" test
+```
+
+The fixtures and metrics are quality gates, not tuning inputs. They require no credentials, network, database,
+model call, scheduler, or production API. They do not persist results or affect production extraction, matching,
+ranking, decisions, or readiness. An LLM-as-judge is not part of this harness; any future qualitative judge must
+remain optional and non-authoritative.
+
 ## Configuration
 
 `src/main/resources/application.yml` supports these environment-variable overrides:
@@ -789,6 +1148,20 @@ canonical-authority behavior is changed.
 | `OPENAI_API_KEY` | empty |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
 | `OPENAI_CONNECT_TIMEOUT` | `5s` |
+| `LEVER_CONNECT_TIMEOUT` | `5s` |
+| `LEVER_REQUEST_TIMEOUT` | `20s` |
+| `LEVER_MAX_RESPONSE_BYTES` | `10485760` |
+| `WORKDAY_CONNECT_TIMEOUT` | `5s` |
+| `WORKDAY_REQUEST_TIMEOUT` | `20s` |
+| `WORKDAY_MAX_SEARCH_RESPONSE_BYTES` | `5242880` |
+| `WORKDAY_MAX_DETAIL_RESPONSE_BYTES` | `2097152` |
+| `JOB_DISCOVERY_SCHEDULING_ENABLED` | `false` |
+| `JOB_DISCOVERY_SCHEDULING_TICK_INTERVAL` | `1m` |
+| `JOB_DISCOVERY_SCHEDULING_INITIAL_DELAY` | `30s` |
+| `JOB_DISCOVERY_SCHEDULING_SYNC_CADENCE` | `1h` |
+| `JOB_DISCOVERY_SCHEDULING_CONCURRENCY` | `2` per process |
+| `JOB_DISCOVERY_SCHEDULING_LEASE_TIMEOUT` | `5m` |
+| `JOB_DISCOVERY_SCHEDULING_LEASE_HEARTBEAT_INTERVAL` | `30s` |
 
 Hibernate `ddl-auto` is `validate`. Schema evolution is Flyway-only. If validation or migration fails, do not delete the Docker volume automatically: preserve it, inspect `flyway_schema_history`, and apply an explicit local recovery plan.
 

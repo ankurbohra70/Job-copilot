@@ -12,18 +12,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.jobcopilot.matching.MatchResult.*;
 
 class DeterministicMatchingEngineTest {
-    @Test void everyVocabularyAliasMatchesThroughRawTextAndStoredSkillsIndependently() throws Exception {
+    @Test void everyVocabularyAliasMatchesThroughExtractedStructuredSkills() throws Exception {
         var vocabulary = com.jobcopilot.common.text.MatchingVocabulary.standard();
         try (var input = getClass().getResourceAsStream("/matching-vocabulary.json")) {
             var definition = tools.jackson.databind.json.JsonMapper.builder().build().readValue(input,
                     com.jobcopilot.common.text.MatchingVocabulary.Definition.class);
             for (var entry : definition.skills().entrySet()) for (String alias : entry.getValue()) {
-                var empty = candidate("", null);
-                var rawOnly = new CandidateMatchingSnapshot(2L, empty.profile(), alias, "rules-v1", "v1", empty.assessedOn());
-                assertEquals(List.of(entry.getKey()), engine.match(job(List.of(entry.getKey()), List.of(), null), rawOnly).matchedRequiredSkills(), alias);
                 var parsed = candidate(alias, null);
-                var storedOnly = new CandidateMatchingSnapshot(2L, parsed.profile(), "", "rules-v1", "v1", parsed.assessedOn());
-                assertEquals(List.of(entry.getKey()), engine.match(job(List.of(entry.getKey()), List.of(), null), storedOnly).matchedRequiredSkills(), alias);
+                assertEquals(List.of(entry.getKey()), engine.match(job(List.of(entry.getKey()), List.of(), null), parsed).matchedRequiredSkills(), alias);
                 assertTrue(vocabulary.hasSkill(alias, entry.getKey()));
             }
         }
@@ -33,11 +29,9 @@ class DeterministicMatchingEngineTest {
     @CsvSource(delimiter = '|', value = {"Spring Boot|spring|false", "Spring Boot|spring-boot|true",
             "Spring Framework|spring|true", "Spring Framework and Spring Boot|spring|true",
             "Spring Framework and Spring Boot|spring-boot|true", "JavaScript|java|false",
-            "Experience using custom-tool in production|custom-tool|true", "custom-tool|tool|true"})
-    void rawEvidenceBoundariesAndCustomFallbackRemainStable(String text, String skill, boolean matches) {
-        var empty = candidate("", null);
-        var raw = new CandidateMatchingSnapshot(2L, empty.profile(), text, "rules-v1", "v1", empty.assessedOn());
-        var result = engine.match(job(List.of(skill), List.of(), null), raw);
+            "Experience using custom-tool in production|custom-tool|false", "custom-tool|tool|false"})
+    void structuredExtractionBoundariesAreAuthoritative(String text, String skill, boolean matches) {
+        var result = engine.match(job(List.of(skill), List.of(), null), candidate(text, null));
         assertEquals(matches ? List.of(skill) : List.of(), result.matchedRequiredSkills());
         assertEquals(matches ? List.of() : List.of(skill), result.missingRequiredSkills());
     }
@@ -51,7 +45,7 @@ class DeterministicMatchingEngineTest {
         var data = new CandidateProfileData(parsed.skills(), months, months,
                 months == null ? CandidateProfileData.Assessment.UNKNOWN : CandidateProfileData.Assessment.KNOWN,
                 parsed.workExperience(), parsed.education(), parsed.projects(), parsed.keywords(), parsed.roleCategories(), parsed.evidence(), parsed.warnings());
-        return new CandidateMatchingSnapshot(2L,data,text,"rules-v1","v1",LocalDate.of(2026,9,7));
+        return new CandidateMatchingSnapshot(2L,data,"rules-v1","v1",LocalDate.of(2026,9,7),1);
     }
     @Test void computesDocumentedWeightedExample() {
         var r = engine.match(job(List.of("java","spring-boot"),List.of(),"3"),candidate("Java",27));
@@ -98,8 +92,13 @@ class DeterministicMatchingEngineTest {
         var result = engine.match(job(List.of("Postgres","postgresql"),List.of("postgres"),null),candidate("Postgres",null));
         assertEquals(List.of("postgresql"),result.matchedRequiredSkills()); assertTrue(result.matchedPreferredSkills().isEmpty());
     }
-    @Test void unknownSkillUsesLiteralEvidence() {
-        var result = engine.match(job(List.of("custom-tool"),List.of(),null),candidate("Built with custom-tool",null));
+    @Test void unknownSkillMatchesOnlyWhenPresentInStructuredSkillsAndUsesStructuredEvidence() {
+        var base = candidate("", null);
+        var data = new CandidateProfileData(List.of("custom-tool"), null, 0, CandidateProfileData.Assessment.UNKNOWN,
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(new CandidateProfileData.Evidence("SKILL", "custom-tool", "Confirmed project evidence")), List.of());
+        var structured = new CandidateMatchingSnapshot(2L, data, "rules-v1", "v1", base.assessedOn(), 1);
+        var result = engine.match(job(List.of("custom-tool"),List.of(),null), structured);
         assertEquals(new BigDecimal("100.00"),result.overallScore()); assertFalse(result.strengths().getFirst().evidence().isEmpty());
     }
     @Test void roleAndKeywordsAreExplainableAndRepetitionDoesNotHelp() {

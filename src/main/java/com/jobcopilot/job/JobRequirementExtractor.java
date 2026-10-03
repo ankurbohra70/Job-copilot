@@ -14,6 +14,7 @@ import java.util.regex.Pattern;
 
 @Component
 public class JobRequirementExtractor {
+    private static final String VERSION = "jc005-v1";
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("^#{1,6}\\s+");
     private static final Pattern BULLET_PREFIX = Pattern.compile("^[•*\\-–—](?!\\d)\\s*");
     private static final String REQUIRED_HEADINGS =
@@ -94,7 +95,20 @@ public class JobRequirementExtractor {
         }
     }
 
+    public String version() {
+        return VERSION;
+    }
+
     public Extraction extract(String description) {
+        Extraction extraction = process(description);
+        if (!isRankingReady(extraction)) {
+            throw new JobRequirementExtractionException(
+                    "No recognized job requirements could be extracted from the job description");
+        }
+        return extraction;
+    }
+
+    Extraction process(String description) {
         if (description == null || description.isBlank()) {
             throw new JobRequirementExtractionException("Job description must be non-blank to extract requirements");
         }
@@ -142,11 +156,12 @@ public class JobRequirementExtractor {
         if (minimum != null && minimum.signum() <= 0) {
             minimum = null;
         }
-        if (required.isEmpty() && preferred.isEmpty() && minimum == null) {
-            throw new JobRequirementExtractionException(
-                    "No recognized job requirements could be extracted from the job description");
-        }
         return new Extraction(required, preferred, minimum);
+    }
+
+    private static boolean isRankingReady(Extraction extraction) {
+        return !extraction.requiredSkills().isEmpty() || !extraction.preferredSkills().isEmpty()
+                || extraction.minYearsExperience() != null && extraction.minYearsExperience().signum() > 0;
     }
 
     private void collectSkills(String clause, Qualification section, Map<String, Qualification> skills) {

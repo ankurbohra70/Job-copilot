@@ -1,7 +1,6 @@
 package com.jobcopilot.resume;
 
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
@@ -19,7 +18,7 @@ public class PdfBoxResumeTextExtractor implements ResumeTextExtractor {
             if (document.getNumberOfPages() > limits.maxPages())
                 throw new ResumeProcessingLimitException("PDF exceeds the configured page limit");
             var text = new StringBuilder();
-            var stripper = new PDFTextStripper();
+            var stripper = new LayoutCapturingPdfTextStripper();
             stripper.setSortByPosition(true);
             stripper.writeText(document, new Writer() {
                 @Override public void write(char[] chars, int offset, int length) {
@@ -34,7 +33,8 @@ public class PdfBoxResumeTextExtractor implements ResumeTextExtractor {
             String extracted = text.toString().replace("\u0000", "");
             if (extracted.codePoints().filter(Character::isLetterOrDigit).count() < limits.minMeaningfulCharacters())
                 throw new EmptyResumeTextException();
-            return new Extraction(extracted, document.getNumberOfPages(), "pdfbox-3.0.8");
+            return new Extraction(extracted, document.getNumberOfPages(), "pdfbox-3.0.8",
+                    LayoutCapturingPdfTextStripper.VERSION, stripper.snapshot(extracted, document));
         } catch (InvalidPasswordException exception) {
             throw new ResumeParsingException("Encrypted PDFs are not supported; upload an unencrypted PDF", exception);
         } catch (IOException | IllegalArgumentException exception) {

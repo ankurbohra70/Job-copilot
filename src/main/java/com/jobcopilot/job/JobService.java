@@ -78,8 +78,22 @@ public class JobService {
     }
 
     @Transactional(readOnly = true)
+    public JobApplicationSnapshot applicationSnapshot(Long id) {
+        Job job = findJob(id);
+        return new JobApplicationSnapshot(toMatchingSnapshot(job), job.getCompany(), job.getJobUrl(), job.getStatus());
+    }
+
+    @Transactional(readOnly = true)
     public List<JobRankingSnapshot> rankingSnapshots(Set<JobStatus> statuses) {
         return jobRepository.findAllWithSkillsForRanking(statuses).stream()
+                .map(JobService::toRankingSnapshot)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<JobRankingSnapshot> rankingSnapshotsByIds(Set<Long> jobIds) {
+        if (jobIds.isEmpty()) return List.of();
+        return jobRepository.findAllWithSkillsForRankingByIdIn(jobIds).stream()
                 .map(JobService::toRankingSnapshot)
                 .toList();
     }

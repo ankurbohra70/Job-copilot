@@ -1,0 +1,26 @@
+Ada Lovelace
+Email: Ada@Example.COM
+Phone: +44 20 7946 0018
+Location: London, United Kingdom
+linkedin.com/in/ada-lovelace
+github.com/ada-lovelace
+leetcode.com/u/ada-lovelace
+Experience
+Backend Engineer at Example Payments
+Jan 2025 - Present
+- Built Java services
+Engineer Intern at Example Payments
+Jan 2024 - Dec 2024
+- Improved test coverage
+Education
+Example University - Computer Science | 2020 - 2024
+Example College - Computing | 2018 - 2020
+Projects
+Job Copilot | GitHub
+- Built Spring Boot APIs
+Raahi | GitHub
+- Built React interfaces
+Skills
+Java, Spring Boot, PostgreSQL, React
+Achievements
+Completed a programming competition

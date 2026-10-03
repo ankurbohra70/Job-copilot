@@ -8,7 +8,7 @@ import java.util.List;
 import static com.jobcopilot.matching.MatchResult.*;
 
 public record MatchResponse(Long candidateProfileId, Long jobId, String algorithmVersion, String vocabularyVersion,
-        String profileParserVersion, LocalDate profileAssessedOn, LocalDateTime jobUpdatedAt,
+        String profileParserVersion, LocalDate profileAssessedOn, long profileRevision, LocalDateTime jobUpdatedAt,
         BigDecimal overallScore, Recommendation recommendation,
         List<String> matchedRequiredSkills, List<String> missingRequiredSkills,
         List<String> matchedPreferredSkills, List<String> unmatchedPreferredSkills,
@@ -17,10 +17,28 @@ public record MatchResponse(Long candidateProfileId, Long jobId, String algorith
         List<String> warnings, List<String> unassessedFactors) {
     public static MatchResponse from(Long profileId, Long jobId, String algorithm, String vocabulary, String parser,
             LocalDate assessed, LocalDateTime updated, MatchResult r) {
-        return new MatchResponse(profileId, jobId, algorithm, vocabulary, parser, assessed, updated, r.overallScore(),
+        return from(profileId, jobId, algorithm, vocabulary, parser, assessed, 0, updated, r);
+    }
+    public static MatchResponse from(Long profileId, Long jobId, String algorithm, String vocabulary, String parser,
+            LocalDate assessed, long revision, LocalDateTime updated, MatchResult r) {
+        return new MatchResponse(profileId, jobId, algorithm, vocabulary, parser, assessed, revision, updated, r.overallScore(),
                 r.recommendation(), r.matchedRequiredSkills(), r.missingRequiredSkills(), r.matchedPreferredSkills(),
                 r.unmatchedPreferredSkills(), r.experienceComparison(), r.roleRelevance(), r.keywordRelevance(),
                 r.breakdown(), r.appliedCaps(), r.strengths(), r.gaps(), r.warnings(), r.unassessedFactors());
+    }
+    public MatchResponse(Long candidateProfileId, Long jobId, String algorithmVersion, String vocabularyVersion,
+            String profileParserVersion, LocalDate profileAssessedOn, LocalDateTime jobUpdatedAt,
+            BigDecimal overallScore, Recommendation recommendation, List<String> matchedRequiredSkills,
+            List<String> missingRequiredSkills, List<String> matchedPreferredSkills,
+            List<String> unmatchedPreferredSkills, ExperienceComparison experienceComparison,
+            Relevance roleRelevance, Relevance keywordRelevance, List<Breakdown> breakdown,
+            List<Cap> appliedCaps, List<Explanation> strengths, List<Explanation> gaps,
+            List<String> warnings, List<String> unassessedFactors) {
+        this(candidateProfileId, jobId, algorithmVersion, vocabularyVersion, profileParserVersion,
+                profileAssessedOn, 0, jobUpdatedAt, overallScore, recommendation, matchedRequiredSkills,
+                missingRequiredSkills, matchedPreferredSkills, unmatchedPreferredSkills, experienceComparison,
+                roleRelevance, keywordRelevance, breakdown, appliedCaps, strengths, gaps, warnings,
+                unassessedFactors);
     }
 }
 

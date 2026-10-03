@@ -1,0 +1,17 @@
+Skills
+Java, Spring Boot, PostgreSQL, AWS, React.js, Redis
+Experience
+MobiKwik - Software Development Engineer I | Gurgaon, India | Feb 2026 - Jul 2026
+- Built payment APIs
+MobiKwik - Software Development Engineer Intern | Gurgaon, India | Jul 2025 - Jan 2026
+- Built merchant services
+Education
+National Institute of Technology, Tiruchirappalli - Master of Computer Applications | 2021-2024 | CGPA: 7.26
+University of Delhi, Deen Dayal Upadhyaya College - B.Sc. (Hons.) Computer Science | 2018-2021 | CGPA: 7.47
+Projects
+Job Copilot - AI Job Intelligence Platform | GitHub
+Java, Spring Boot, PostgreSQL, AWS
+- Ranked matching jobs
+Raahi - Full-Stack Ride Booking Platform | GitHub
+React.js, Redis
+- Built ride booking flows

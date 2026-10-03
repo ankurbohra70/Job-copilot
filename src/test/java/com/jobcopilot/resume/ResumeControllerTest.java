@@ -36,6 +36,45 @@ class ResumeControllerTest {
         mvc.perform(get("/api/resumes/9")).andExpect(status().isNotFound());
         mvc.perform(get("/api/candidate-profiles/9")).andExpect(status().isNotFound());
     }
+    @Test void createsAndUpdatesAuthoritativeCandidateFactsWithoutRequiringGuessedValues() throws Exception {
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"UNKNOWN","sponsorshipRequired":"UNKNOWN"}
+                """)).andExpect(status().isCreated());
+        mvc.perform(put("/api/candidate-profiles/7").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"YES","sponsorshipRequired":"NO","noticePeriodDays":30}
+                """)).andExpect(status().isOk());
+        verify(persistence).createProfile(any());
+        verify(persistence).updateProfile(eq(7L), any());
+    }
+    @Test void rejectsInvalidCandidateFactsBeforePersistence() throws Exception {
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","noticePeriodDays":731}
+                """)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.noticePeriodDays").exists());
+        mvc.perform(post("/api/candidate-profiles").contentType("application/json").content("""
+                {"fullName":"Candidate","workAuthorization":"MAYBE"}
+                """)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request body is malformed or contains an invalid value"));
+        verifyNoInteractions(persistence);
+    }
+    @Test void confirmationValidatesRevisionAndMapsLifecycleConflicts() throws Exception {
+        String profile = """
+                {"skills":[],"totalExperienceMonths":null,"observedExperienceMonths":0,
+                 "experienceAssessment":"UNKNOWN","workExperience":[],"education":[],"projects":[],
+                 "keywords":[],"roleCategories":[],"evidence":[],"warnings":[]}
+                """;
+        mvc.perform(put("/api/candidate-profiles/7/confirmation").contentType("application/json").content("""
+                {"expectedRevision":0,"profile":%s,"facts":{}}
+                """.formatted(profile))).andExpect(status().isBadRequest());
+        when(persistence.confirm(eq(7L), any())).thenThrow(new CandidateProfileRevisionConflictException(7L));
+        mvc.perform(put("/api/candidate-profiles/7/confirmation").contentType("application/json").content("""
+                {"expectedRevision":1,"profile":%s,"facts":{}}
+                """.formatted(profile))).andExpect(status().isConflict());
+        when(persistence.confirm(eq(9L), any())).thenThrow(new CandidateProfileNotFoundException(9L));
+        mvc.perform(put("/api/candidate-profiles/9/confirmation").contentType("application/json").content("""
+                {"expectedRevision":1,"profile":%s,"facts":{}}
+                """.formatted(profile))).andExpect(status().isNotFound());
+    }
     static Stream<Object[]> errors() {
         return Stream.of(new Object[]{new InvalidResumeFileException("empty"),400},
                 new Object[]{new UnsupportedResumeTypeException(),415},new Object[]{new ResumeTooLargeException(),413},

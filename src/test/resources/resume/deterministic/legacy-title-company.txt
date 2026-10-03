@@ -1,0 +1,16 @@
+Skills
+Java, Spring Boot, PostgreSQL, Redis, AWS
+Experience
+Software Development Engineer Intern July 2025 - Present
+Mobikwik Gurgaon, India
+on backend development, cloud integration, and real-time communication.
+Education
+National Institute of Technology, Tiruchirappalli 2021 - 2024
+Master of Computer Applications (MCA) - CGPA: 7.26 Trichy, India
+Deen Dayal Upadhyaya College, University of Delhi 2018 - 2021
+B.Sc (Hons) Computer Science - CGPA: 7.47 New Delhi, India
+Projects
+Raahi App | Spring Boot, PostgreSQL Link
+- Implemented ride matching
+Personalized Travel Recommender | Java, Redis, AWS Link
+- Generated travel recommendations

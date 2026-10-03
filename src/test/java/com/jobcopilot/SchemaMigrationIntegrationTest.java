@@ -6,6 +6,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
@@ -17,6 +18,37 @@ class SchemaMigrationIntegrationTest {
                 .schemas(schema).defaultSchema(schema).cleanDisabled(true).baselineOnMigrate(false);
         if (target != null) config.target(target);
         return config.load();
+    }
+    @Test void v10AddsNullableCapabilitiesWithoutChangingHistoricalResumeOrProfileData() throws Exception {
+        flyway("upgrade_v9_facts", "9").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            for (int version = 1; version <= 5; version++) {
+                statement.execute("INSERT INTO upgrade_v9_facts.resumes(id,file_name,size_bytes,media_type,extracted_text,page_count,extractor_version,created_at) "
+                        + "VALUES (" + version + ",'historical.pdf',100,'application/pdf','Frozen source text',1,'pdfbox-3.0.8',TIMESTAMP '2026-01-01 00:00:00')");
+                statement.execute("INSERT INTO upgrade_v9_facts.candidate_profiles(id,resume_id,profile_data,schema_version,parser_version,vocabulary_version,assessed_on,created_at,updated_at,status,revision,confirmed_at) "
+                        + "VALUES (" + version + "," + version + ",'{}'::jsonb,'v1','rules-v" + version + "','v1',DATE '2026-01-01',"
+                        + "TIMESTAMP '2026-01-01 00:00:00',TIMESTAMP '2026-01-02 00:00:00','CONFIRMED',7,TIMESTAMP '2026-01-02 00:00:00')");
+            }
+            String beforeProfiles, beforeResumes;
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(p) ORDER BY id)::text FROM upgrade_v9_facts.candidate_profiles p")) {
+                assertTrue(rows.next()); beforeProfiles = rows.getString(1);
+            }
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) ORDER BY id)::text FROM upgrade_v9_facts.resumes r")) {
+                assertTrue(rows.next()); beforeResumes = rows.getString(1);
+            }
+            var upgraded = flyway("upgrade_v9_facts",null);
+            assertEquals(1,upgraded.migrate().migrationsExecuted); upgraded.validate();
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(p) - 'professional_links' - 'fact_extractor_version' - 'fact_extraction' ORDER BY id)::text FROM upgrade_v9_facts.candidate_profiles p")) {
+                assertTrue(rows.next()); assertEquals(beforeProfiles,rows.getString(1));
+            }
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) - 'layout_version' ORDER BY id)::text FROM upgrade_v9_facts.resumes r")) {
+                assertTrue(rows.next()); assertEquals(beforeResumes,rows.getString(1));
+            }
+            try (var rows = statement.executeQuery("SELECT count(*) FROM upgrade_v9_facts.candidate_profiles WHERE professional_links IS NULL AND fact_extractor_version IS NULL AND fact_extraction IS NULL")) {
+                assertTrue(rows.next()); assertEquals(5,rows.getInt(1));
+            }
+        }
     }
 
     @Test void cleanDatabaseMigratesAndCanBeValidatedRepeatedly() {
@@ -47,6 +79,476 @@ class SchemaMigrationIntegrationTest {
             assertEquals("Existing", rows.getString("title"));
             assertEquals("DISCOVERED", rows.getString("status"));
             assertFalse(rows.next());
+        }
+    }
+
+    @Test void currentV3SchemaUpgradesToDiscoveryDomainWithoutChangingExistingJobs() throws Exception {
+        flyway("upgrade_v3", "3").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v3.jobs(title, company, status, created_at, updated_at)
+                    VALUES ('Existing V3 Job', 'Company', 'APPLIED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v3", null);
+        assertEquals(7, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("SELECT title, status FROM upgrade_v3.jobs")) {
+                assertTrue(rows.next());
+                assertEquals("Existing V3 Job", rows.getString("title"));
+                assertEquals("APPLIED", rows.getString("status"));
+                assertFalse(rows.next());
+            }
+            for (String table : new String[]{"job_sources", "external_job_listings", "job_source_sync_runs"}) {
+                try (var rows = statement.executeQuery("""
+                        SELECT COUNT(*) FROM information_schema.tables
+                        WHERE table_schema = 'upgrade_v3' AND table_name = '%s'
+                        """.formatted(table))) {
+                    assertTrue(rows.next());
+                    assertEquals(1, rows.getInt(1));
+                }
+            }
+        }
+    }
+
+    @Test void currentV4SchemaUpgradesWithNullableValidatedExtractionFingerprint() throws Exception {
+        flyway("upgrade_v4", "4").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v4.jobs(id, title, company, status, created_at, updated_at)
+                    VALUES (100, 'Existing', 'Company', 'DISCOVERED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v4.job_sources(id, provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    VALUES (100, 'LEVER', 'GLOBAL', 'existing', 'Company', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v4.external_job_listings(
+                        id, job_source_id, job_id, external_job_id, availability, provider_content_digest,
+                        first_seen_at, last_seen_at, last_verified_at)
+                    VALUES (100, 100, 100, 'posting', 'LIVE', 'digest', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v4", null);
+        assertEquals(6, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery(
+                    "SELECT extraction_fingerprint FROM upgrade_v4.external_job_listings WHERE id = 100")) {
+                assertTrue(rows.next());
+                assertNull(rows.getString(1));
+            }
+            statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings
+                    SET extraction_fingerprint = 'jc005-v1:sha256:abc' WHERE id = 100
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings SET extraction_fingerprint = ' ' WHERE id = 100
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v4.external_job_listings SET extraction_fingerprint = E'\t' WHERE id = 100
+                    """));
+        }
+    }
+
+    @Test void populatedV5SchemaAddsLeaseAndMakesExistingRunningRowsImmediatelyRecoverable() throws Exception {
+        flyway("upgrade_v5", "5").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_sources(
+                        id, provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    VALUES (100, 'LEVER', 'GLOBAL', 'running', 'Running Company', true,
+                            CURRENT_TIMESTAMP - INTERVAL '1 hour', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.jobs(
+                        id, title, company, status, source, external_job_id, created_at, updated_at)
+                    VALUES (100, 'Preserved Job', 'Terminal Company', 'APPLIED', 'LEVER', 'posting-100',
+                            CURRENT_TIMESTAMP - INTERVAL '1 hour', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_sources(
+                        id, provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    VALUES (101, 'LEVER', 'GLOBAL', 'terminal', 'Terminal Company', true,
+                            CURRENT_TIMESTAMP - INTERVAL '1 hour', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.external_job_listings(
+                        id, job_source_id, job_id, external_job_id, availability, provider_content_digest,
+                        extraction_fingerprint, first_seen_at, last_seen_at, last_verified_at)
+                    VALUES (100, 101, 100, 'posting-100', 'CLOSED', 'digest-100',
+                            'jc005-v1:sha256:abc', CURRENT_TIMESTAMP - INTERVAL '1 hour',
+                            CURRENT_TIMESTAMP - INTERVAL '30 minutes', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_source_sync_runs(
+                        id, job_source_id, trigger, status, started_at)
+                    VALUES (100, 100, 'SCHEDULED', 'RUNNING', CURRENT_TIMESTAMP - INTERVAL '30 minutes')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_sources(
+                        id, provider, region, source_key, company_name, enabled, created_at, updated_at)
+                    VALUES (102, 'LEVER', 'GLOBAL', 'future-running', 'Future Running Company', true,
+                            CURRENT_TIMESTAMP - INTERVAL '1 hour', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_source_sync_runs(
+                        id, job_source_id, trigger, status, started_at)
+                    VALUES (102, 102, 'SCHEDULED', 'RUNNING', CURRENT_TIMESTAMP + INTERVAL '1 hour')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v5.job_source_sync_runs(
+                        id, job_source_id, trigger, status, started_at, completed_at,
+                        discovered_count, created_count, updated_count, unchanged_count,
+                        closed_count, reopened_count, ranking_ready_count, unready_count)
+                    VALUES (101, 101, 'MANUAL', 'SUCCEEDED', CURRENT_TIMESTAMP - INTERVAL '20 minutes',
+                            CURRENT_TIMESTAMP - INTERVAL '10 minutes', 8, 2, 1, 4, 1, 0, 6, 2)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v5", null);
+        assertEquals(5, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT status, lease_expires_at <= clock_timestamp() AS immediately_recoverable,
+                           lease_expires_at
+                    FROM upgrade_v5.job_source_sync_runs ORDER BY id
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("RUNNING", rows.getString("status"));
+                assertTrue(rows.getBoolean("immediately_recoverable"));
+                assertTrue(rows.next());
+                assertEquals("SUCCEEDED", rows.getString("status"));
+                assertNull(rows.getTimestamp("lease_expires_at"));
+                assertTrue(rows.next());
+                assertEquals("RUNNING", rows.getString("status"));
+                assertTrue(rows.getBoolean("immediately_recoverable"));
+                assertFalse(rows.next());
+            }
+            try (var rows = statement.executeQuery("""
+                    SELECT job.status, listing.availability, listing.provider_content_digest,
+                           listing.extraction_fingerprint, run.discovered_count, run.created_count,
+                           run.updated_count, run.unchanged_count, run.closed_count, run.reopened_count,
+                           run.ranking_ready_count, run.unready_count
+                    FROM upgrade_v5.jobs job
+                    JOIN upgrade_v5.external_job_listings listing ON listing.job_id = job.id
+                    JOIN upgrade_v5.job_source_sync_runs run ON run.id = 101
+                    WHERE job.id = 100
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("APPLIED", rows.getString("status"));
+                assertEquals("CLOSED", rows.getString("availability"));
+                assertEquals("digest-100", rows.getString("provider_content_digest"));
+                assertEquals("jc005-v1:sha256:abc", rows.getString("extraction_fingerprint"));
+                assertEquals(8, rows.getInt("discovered_count"));
+                assertEquals(2, rows.getInt("created_count"));
+                assertEquals(1, rows.getInt("updated_count"));
+                assertEquals(4, rows.getInt("unchanged_count"));
+                assertEquals(1, rows.getInt("closed_count"));
+                assertEquals(0, rows.getInt("reopened_count"));
+                assertEquals(6, rows.getInt("ranking_ready_count"));
+                assertEquals(2, rows.getInt("unready_count"));
+                assertFalse(rows.next());
+            }
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v5.job_source_sync_runs SET lease_expires_at = NULL WHERE id = 100
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v5.job_source_sync_runs(
+                        job_source_id, trigger, status, started_at, lease_expires_at)
+                    VALUES (100, 'MANUAL', 'RUNNING', CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+                    """));
+        }
+    }
+
+    @Test void populatedV6SchemaAddsTypedCandidateAndReadinessTablesWithoutFabricatingFacts() throws Exception {
+        flyway("upgrade_v6", "6").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resumes(id, file_name, size_bytes, media_type, extracted_text,
+                        page_count, extractor_version, created_at)
+                    VALUES (10, 'existing.pdf', 100, 'application/pdf', 'existing text', 1, 'pdfbox-v1', CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.candidate_profiles(id, resume_id, profile_data, schema_version,
+                        parser_version, vocabulary_version, assessed_on, created_at)
+                    VALUES (10, 10, '{}'::jsonb, 'v1', 'rules-v1', 'v1', CURRENT_DATE, CURRENT_TIMESTAMP)
+                    """);
+        }
+        var upgraded = flyway("upgrade_v6", null);
+        assertEquals(4, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT resume_id, work_authorization, sponsorship_required, minimum_compensation,
+                           updated_at IS NOT NULL FROM upgrade_v6.candidate_profiles WHERE id = 10
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals(10, rows.getLong("resume_id"));
+                assertEquals("UNKNOWN", rows.getString("work_authorization"));
+                assertEquals("UNKNOWN", rows.getString("sponsorship_required"));
+                assertNull(rows.getBigDecimal("minimum_compensation"));
+                assertTrue(rows.getBoolean(5));
+            }
+            for (String table : new String[]{"job_search_preferences", "job_search_preference_roles",
+                    "job_search_preference_locations", "job_search_preference_work_arrangements", "resume_routes"}) {
+                try (var rows = statement.executeQuery("""
+                        SELECT COUNT(*) FROM information_schema.tables
+                        WHERE table_schema = 'upgrade_v6' AND table_name = '%s'
+                        """.formatted(table))) {
+                    assertTrue(rows.next()); assertEquals(1, rows.getInt(1));
+                }
+            }
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET work_authorization = 'MAYBE' WHERE id = 10
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preferences(
+                        id, candidate_profile_id, default_resume_strategy, created_at, updated_at)
+                    VALUES (10, 10, 'VOLUME', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'TARGET', 'Engineer')
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'EXCLUDED', 'engineer')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_roles(preference_id, kind, role_title)
+                    VALUES (10, 'TARGET', ' Analyst ')
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, 'Bengaluru')
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, 'bengaluru')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.job_search_preference_locations(preference_id, location)
+                    VALUES (10, ' Mumbai ')
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET full_name = ' Candidate ' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET full_name = E'Candidate\nInjected' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET email = 'not-an-email' WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = NULL, minimum_compensation = 100 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = 'INR', minimum_compensation = NULL,
+                        desired_compensation = NULL WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles
+                    SET compensation_currency = 'INR', minimum_compensation = 200,
+                        desired_compensation = 100 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    UPDATE upgrade_v6.candidate_profiles SET notice_period_days = -1 WHERE id = 10
+                    """));
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, ' Default ', true, CURRENT_TIMESTAMP)
+                    """));
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Draft', false, CURRENT_TIMESTAMP)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Approved', true, CURRENT_TIMESTAMP)
+                    """);
+            assertThrows(Exception.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v6.resume_routes(candidate_profile_id, resume_id, strategy, role_family,
+                        is_default, variant_label, approved, created_at)
+                    VALUES (10, 10, 'VOLUME', NULL, true, 'Second approved', true, CURRENT_TIMESTAMP)
+                    """));
+        }
+    }
+
+    @Test void populatedV7SchemaBackfillsConfirmedLifecycleAndMovesSearchIntentWithoutLoss() throws Exception {
+        flyway("upgrade_v7", "7").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v7.candidate_profiles(
+                        id, profile_data, schema_version, parser_version, vocabulary_version,
+                        assessed_on, created_at, updated_at, relocation_willing,
+                        compensation_currency, minimum_compensation, desired_compensation)
+                    VALUES (20, '{}'::jsonb, 'v1', 'manual-v1', 'v1', CURRENT_DATE,
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00',
+                        'YES', 'INR', 100, 150)
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v7.job_search_preferences(
+                        id, candidate_profile_id, default_resume_strategy, created_at, updated_at)
+                    VALUES (20, 20, 'PRECISION', TIMESTAMP '2025-01-01 00:00:00',
+                        TIMESTAMP '2025-02-01 00:00:00')
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v7", null);
+        assertEquals(3, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT profile.status, profile.revision, profile.confirmed_at IS NOT NULL,
+                           profile.relocation_willing, profile.compensation_currency,
+                           preference.relocation_willing, preference.compensation_currency,
+                           preference.minimum_compensation, preference.desired_compensation,
+                           preference.updated_at
+                    FROM upgrade_v7.candidate_profiles profile
+                    JOIN upgrade_v7.job_search_preferences preference
+                      ON preference.candidate_profile_id = profile.id
+                    WHERE profile.id = 20
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("CONFIRMED", rows.getString(1));
+                assertEquals(1, rows.getLong(2));
+                assertTrue(rows.getBoolean(3));
+                assertEquals("UNKNOWN", rows.getString(4));
+                assertNull(rows.getString(5));
+                assertEquals("YES", rows.getString(6));
+                assertEquals("INR", rows.getString(7));
+                assertEquals(0, new java.math.BigDecimal("100.00").compareTo(rows.getBigDecimal(8)));
+                assertEquals(0, new java.math.BigDecimal("150.00").compareTo(rows.getBigDecimal(9)));
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(10).toLocalDateTime());
+            }
+        }
+    }
+
+    @Test void populatedV8SchemaAddsCheckedWorkdayIdentityAndPreservesLeverGraph() throws Exception {
+        flyway("upgrade_v8", "8").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO upgrade_v8.jobs(id, title, company, status, source, external_job_id,
+                        created_at, updated_at)
+                    VALUES (80, 'Preserved', 'Company', 'APPLIED', 'LEVER', 'posting-80',
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(id, provider, region, source_key, company_name,
+                        enabled, last_successful_sync_at, created_at, updated_at)
+                    VALUES (80, 'LEVER', 'GLOBAL', 'preserved', 'Company', true,
+                        TIMESTAMP '2026-02-01 00:00:00', TIMESTAMP '2026-01-01 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.external_job_listings(id, job_source_id, job_id, external_job_id,
+                        availability, provider_content_digest, extraction_fingerprint,
+                        first_seen_at, last_seen_at, last_verified_at)
+                    VALUES (80, 80, 80, 'posting-80', 'LIVE', 'digest', 'fingerprint',
+                        TIMESTAMP '2026-01-01 00:00:00', TIMESTAMP '2026-02-01 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00')
+                    """);
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_source_sync_runs(id, job_source_id, trigger, status,
+                        started_at, completed_at, discovered_count)
+                    VALUES (80, 80, 'MANUAL', 'SUCCEEDED', TIMESTAMP '2026-01-31 00:00:00',
+                        TIMESTAMP '2026-02-01 00:00:00', 1)
+                    """);
+        }
+
+        var upgraded = flyway("upgrade_v8", null);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
+        upgraded.validate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("""
+                    SELECT source.provider, source.routing_region, source.source_key,
+                           source.endpoint_host, source.last_successful_sync_at,
+                           source.created_at, source.updated_at,
+                           job.status, listing.availability, run.status, run.discovered_count
+                    FROM upgrade_v8.job_sources source
+                    JOIN upgrade_v8.external_job_listings listing ON listing.job_source_id = source.id
+                    JOIN upgrade_v8.jobs job ON job.id = listing.job_id
+                    JOIN upgrade_v8.job_source_sync_runs run ON run.job_source_id = source.id
+                    WHERE source.id = 80
+                    """)) {
+                assertTrue(rows.next());
+                assertEquals("LEVER", rows.getString(1));
+                assertEquals("GLOBAL", rows.getString(2));
+                assertEquals("preserved", rows.getString(3));
+                assertNull(rows.getString(4));
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(5).toLocalDateTime());
+                assertEquals(java.time.LocalDateTime.of(2026, 1, 1, 0, 0),
+                        rows.getTimestamp(6).toLocalDateTime());
+                assertEquals(java.time.LocalDateTime.of(2026, 2, 1, 0, 0),
+                        rows.getTimestamp(7).toLocalDateTime());
+                assertEquals("APPLIED", rows.getString(8));
+                assertEquals("LIVE", rows.getString(9));
+                assertEquals("SUCCEEDED", rows.getString(10));
+                assertEquals(1, rows.getInt(11));
+            }
+            statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'nvidia.wd5.myworkdayjobs.com', 'nvidia',
+                        'NVIDIAExternalCareerSite', 'en-US', 'NVIDIA', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """);
+            assertEquals("23505", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'nvidia.wd5.myworkdayjobs.com', 'nvidia',
+                        'NVIDIAExternalCareerSite', 'en-US', 'Duplicate', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23505", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, company_name,
+                        enabled, created_at, updated_at)
+                    VALUES ('LEVER', 'GLOBAL', 'preserved', 'Duplicate Lever', true,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, endpoint_host,
+                        tenant_key, site_key, locale, company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'GLOBAL', 'mixed', 'wd3.myworkdaysite.com', 'tenant', 'Site',
+                        'en-US', 'Mixed', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, endpoint_host, tenant_key, site_key, locale,
+                        company_name, enabled, created_at, updated_at)
+                    VALUES ('WORKDAY', 'NVIDIA.wd5.myworkdayjobs.com', 'nvidia', 'Site', 'en-US',
+                        'Bad Host', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
+            assertEquals("23514", assertThrows(SQLException.class, () -> statement.execute("""
+                    INSERT INTO upgrade_v8.job_sources(provider, routing_region, source_key, endpoint_host,
+                        tenant_key, site_key, locale, company_name, enabled, created_at, updated_at)
+                    VALUES ('LEVER', 'GLOBAL', 'lever', 'wd3.myworkdaysite.com', NULL, NULL, NULL,
+                        'Mixed Lever', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """)).getSQLState());
         }
     }
 }
