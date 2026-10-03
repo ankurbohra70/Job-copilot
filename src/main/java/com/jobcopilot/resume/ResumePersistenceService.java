@@ -27,6 +27,18 @@ public class ResumePersistenceService {
         return save(filename, size, text, pages, extractorVersion, data, date, parserVersion,
                 vocabularyVersion, CandidateProfileStatus.DRAFT);
     }
+    @Transactional
+    public ResumeResponse saveDraft(String filename, long size, ResumeTextExtractor.Extraction extraction,
+            CandidateProfileData canonicalData, LocalDate date, String parserVersion, String vocabularyVersion,
+            CandidateFactExtraction facts) {
+        Resume resume = new Resume(filename, size, extraction.text(), extraction.pageCount(), extraction.version());
+        resume.recordLayoutVersion(extraction.layoutVersion());
+        resume = resumes.save(resume);
+        CandidateProfile profile = new CandidateProfile(resume, validator.canonicalize(canonicalData), date,
+                parserVersion, vocabularyVersion, CandidateProfileStatus.DRAFT);
+        profile.initializeSuggestions(facts);
+        return response(resume, profiles.saveAndFlush(profile));
+    }
     private ResumeResponse save(String filename, long size, String text, int pages, String extractorVersion,
             CandidateProfileData data, LocalDate date, String parserVersion, String vocabularyVersion,
             CandidateProfileStatus status) {
@@ -72,7 +84,11 @@ public class ResumePersistenceService {
         }
     }
     @Transactional(readOnly = true)
-    public CandidateProfileFacts facts(Long id) { return findProfile(id).facts(); }
+    public CandidateProfileFacts facts(Long id) {
+        CandidateProfile profile = findProfile(id);
+        if (profile.status() != CandidateProfileStatus.CONFIRMED) throw new CandidateProfileNotConfirmedException(id);
+        return profile.facts();
+    }
     @Transactional(readOnly = true)
     public CandidateMatchingSnapshot matchingSnapshot(Long id) {
         CandidateProfile p = findProfile(id);
@@ -85,15 +101,16 @@ public class ResumePersistenceService {
     private static CandidateProfileResponse profileResponse(CandidateProfile p) {
         return new CandidateProfileResponse(p.id(), p.resume() == null ? null : p.resume().id(), p.data(), p.facts(),
                 p.schemaVersion(), p.parserVersion(), p.vocabularyVersion(), p.assessedOn(),
-                p.status(), p.revision(), p.confirmedAt(), p.createdAt(), p.updatedAt());
+                p.status(), p.revision(), p.confirmedAt(), p.createdAt(), p.updatedAt(),
+                p.factExtractorVersion(), p.factExtraction());
     }
     private static ResumeResponse response(Resume r, CandidateProfile p) {
-        return new ResumeResponse(r.id(), r.fileName(), r.sizeBytes(), r.pageCount(), r.extractorVersion(), r.createdAt(), profileResponse(p));
+        return new ResumeResponse(r.id(), r.fileName(), r.sizeBytes(), r.pageCount(), r.extractorVersion(), r.createdAt(), profileResponse(p), r.layoutVersion());
     }
     private static CandidateProfileFacts toFacts(com.jobcopilot.resume.dto.CandidateProfileRequest r) {
         return new CandidateProfileFacts(r.fullName(), r.email(), r.phone(), r.location(), r.currentTitle(),
                 r.totalRelevantExperienceMonths(), r.workAuthorization(), r.sponsorshipRequired(),
-                r.noticePeriodDays());
+                r.noticePeriodDays(), r.professionalLinks());
     }
     private static CandidateProfileData emptyProfileData() {
         return new CandidateProfileData(java.util.List.of(), null, 0, CandidateProfileData.Assessment.UNKNOWN,

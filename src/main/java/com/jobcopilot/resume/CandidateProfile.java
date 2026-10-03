@@ -31,6 +31,9 @@ class CandidateProfile {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private CandidateFactState workAuthorization = CandidateFactState.UNKNOWN;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private CandidateFactState sponsorshipRequired = CandidateFactState.UNKNOWN;
     private Integer noticePeriodDays;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb") private java.util.List<ProfessionalLink> professionalLinks;
+    @Column(length = 64, updatable = false) private String factExtractorVersion;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition = "jsonb", updatable = false) private CandidateFactExtractionData factExtraction;
     protected CandidateProfile() {}
     CandidateProfile(Resume resume, CandidateProfileData data, LocalDate assessedOn, String parserVersion, String vocabularyVersion) {
         this(resume, data, assessedOn, parserVersion, vocabularyVersion,
@@ -46,10 +49,10 @@ class CandidateProfile {
         this(null, data, assessedOn, "manual-v1", "v1");
     }
     @PrePersist void onCreate() {
-        createdAt = LocalDateTime.now(); updatedAt = createdAt;
+        createdAt = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS); updatedAt = createdAt;
         if (status == CandidateProfileStatus.CONFIRMED) confirmedAt = createdAt;
     }
-    @PreUpdate void onUpdate() { updatedAt = LocalDateTime.now(); }
+    @PreUpdate void onUpdate() { updatedAt = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS); }
     Long id() { return id; }
     Resume resume() { return resume; }
     CandidateProfileData data() { return profileData; }
@@ -62,9 +65,17 @@ class CandidateProfile {
     CandidateProfileStatus status() { return status; }
     long revision() { return revision; }
     LocalDateTime confirmedAt() { return confirmedAt; }
+    String factExtractorVersion() { return factExtractorVersion; }
+    CandidateFactExtractionData factExtraction() { return factExtraction; }
+    void initializeSuggestions(CandidateFactExtraction extraction) {
+        if (id != null || factExtraction != null || status != CandidateProfileStatus.DRAFT)
+            throw new IllegalStateException("Suggestions can only initialize a new draft");
+        replaceFacts(extraction.facts());
+        factExtractorVersion = extraction.factExtractorVersion(); factExtraction = extraction.metadata();
+    }
     CandidateProfileFacts facts() {
         return new CandidateProfileFacts(fullName, email, phone, location, currentTitle,
-                totalRelevantExperienceMonths, workAuthorization, sponsorshipRequired, noticePeriodDays);
+                totalRelevantExperienceMonths, workAuthorization, sponsorshipRequired, noticePeriodDays, professionalLinks);
     }
     void replaceFacts(CandidateProfileFacts facts) {
         java.util.Objects.requireNonNull(facts, "Candidate facts are required");
@@ -83,6 +94,8 @@ class CandidateProfile {
         workAuthorization = java.util.Objects.requireNonNullElse(facts.workAuthorization(), CandidateFactState.UNKNOWN);
         sponsorshipRequired = java.util.Objects.requireNonNullElse(facts.sponsorshipRequired(), CandidateFactState.UNKNOWN);
         noticePeriodDays = facts.noticePeriodDays();
+        var links = CandidateFactsValidator.canonicalLinks(facts.professionalLinks());
+        if (professionalLinks != null || !links.isEmpty()) professionalLinks = links;
     }
     boolean confirmOrReplace(CandidateProfileData data, CandidateProfileFacts facts) {
         CandidateProfileData previousData = profileData;
@@ -94,7 +107,7 @@ class CandidateProfile {
                 || !previousData.equals(profileData) || !previousFacts.equals(facts());
         if (!changed) return false;
         status = CandidateProfileStatus.CONFIRMED;
-        if (confirmedAt == null) confirmedAt = LocalDateTime.now();
+        if (confirmedAt == null) confirmedAt = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         return true;
     }
     private static String clean(String value, int maximumLength) {

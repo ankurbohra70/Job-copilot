@@ -311,8 +311,9 @@ Hibernate no longer evolves the schema. Flyway owns migrations and is configured
 | V7 | `V7__add_application_readiness_foundations.sql` | Candidate search policy, resume routes, and readiness foundations |
 | V8 | `V8__add_candidate_profile_authority.sql` | Confirmed candidate authority, revisioning, and search-intent ownership |
 | V9 | `V9__add_workday_job_sources.sql` | Provider-neutral source routing plus checked Workday host/tenant/site/locale identity |
+| V10 | `V10__add_candidate_fact_extraction.sql` | Nullable layout/facts capability versions, editable professional links, immutable original fact evidence |
 
-A new empty database migrates V1 through V9 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences, and V9 preserves existing Lever identities while adding provider-shaped Workday source configuration. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
+A new empty database migrates V1 through V10 automatically on startup. V6 leaves terminal leases null and makes a pre-existing `RUNNING` row immediately eligible for recovery. V7 adds application-readiness foundations, V8 adds authoritative candidate-profile lifecycle/revision fields while moving compensation and relocation intent to job-search preferences, V9 preserves existing Lever identities while adding provider-shaped Workday source configuration, and V10 adds candidate-fact extraction storage without backfilling historical rows. An existing pre-Flyway database must be backed up and explicitly baselined at V1 before later migrations can run. Do not delete the Docker volume, rebuild the database, or baseline unknown/drifted schemas as a shortcut.
 
 Inspect history with:
 
@@ -376,7 +377,7 @@ Limitations:
 - Incomplete employment chronology is stored as `UNKNOWN` experience, not as zero years.
 - Extracted text is persisted for later reprocessing. Raw PDF bytes are not stored.
 - Normal API responses do not include the full extracted text.
-- Candidate corrections are deferred; JC-003 extraction is read-only.
+- Uploads create a DRAFT with supported contact suggestions; review and confirmation make candidate facts authoritative.
 
 Windows PowerShell:
 
@@ -392,6 +393,44 @@ curl -i -X POST http://localhost:8080/api/resumes \
 ```
 
 Expected status: `201 Created` with `Location: /api/resumes/{id}`. Use `GET /api/resumes/{id}` and `GET /api/candidate-profiles/{id}` to retrieve metadata and the structured profile.
+
+### Observational layout and candidate facts
+
+New uploads retain `extractorVersion=pdfbox-3.0.8`, `parserVersion=rules-v5`, and `vocabularyVersion=v1`,
+and record independent `layoutVersion=layout-v2` and `factExtractorVersion=facts-v1`. The layout observer
+delegates PDFBox text emission unchanged. Only that legacy text is passed to rules-v5; layout is never used
+to reconstruct it. Full layout geometry and PDF bytes are not persisted.
+
+facts-v1 considers only bounded first-page header/contact context for name, email, phone, location, and
+professional links. Conflicting scalar candidates remain null. Explicit international phones are validated
+and normalized with Google libphonenumber 9.0.40; supported countryless contact numbers remain readable raw
+values without an assumed country. Current title comes only from exactly one ongoing parsed work entry with
+a nonblank title and no explicit future start. It is not recomputed during confirmation.
+
+`facts.professionalLinks` is an editable list of `{type,url}` with types `LINKEDIN`, `GITHUB`, `LEETCODE`,
+`WEBSITE`, and `OTHER`. Limits are 20 links and 2048 characters per URL. HTTP(S) only, hostname/profile-path
+validation, HTTPS for schemeless URLs, credential/fragment removal, and deduplication apply. Project links
+and hidden annotations without supported visible header context are excluded from suggestions. Omitted
+links clear the list under existing full-replacement semantics.
+
+Profile responses include read-only `factExtraction`: original suggestions, bounded evidence, and diagnostic
+codes. Evidence stays attached to the original extraction through correction, clearing, confirmation, and
+ordinary updates; it does not attest to later corrected values. It cannot be supplied in confirmation requests.
+Review shows draft suggestions and editable links, including reload and stale-revision reconciliation.
+Direct downstream fact consumption, like matching, requires a confirmed profile.
+
+Metadata capture is capped at 200,000 positions, 20,000 lines, and 500 URI annotations. Unsupported geometry,
+rotated text/header context, or capture limits disable layout-derived suggestions while retaining valid legacy
+extraction and structured parsing. Evidence snippets are at most 512 characters, with at most 50 items and
+16,000 total source-text characters. No discovered URL is fetched and contact/evidence data is not logged.
+
+V10 adds nullable layout/facts versions, professional-links JSONB, and fact-extraction JSONB. There is no
+historical backfill or re-extraction; rules-v1 through rules-v5 records retain their data and versions. Newly
+written resume/profile timestamps use database microsecond precision so upload and GET responses agree.
+Sensitive declarations, notice period, relevant experience, and search preferences remain manual.
+
+The profile text-entry Space/Enter normalization bug is a separate ticket and remains unchanged. New link
+controls keep raw typing state and trim at submission.
 
 ## Job matching requirements
 

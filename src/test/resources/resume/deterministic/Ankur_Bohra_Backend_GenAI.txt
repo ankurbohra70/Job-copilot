@@ -1,0 +1,61 @@
+ANKUR BOHRA
+ankurbohra70@gmail.com | +91-9315593938
+linkedin.com/in/ankur-bohra-97a4a817a | github.com/ankurbohra70 | leetcode.com/u/ankurbohra70
+SUMMARY
+Software Engineer with production experience building scalable Java/Spring Boot backend systems, REST APIs, distributed
+workflows, and data-backed services at MobiKwik. Shipped a greenfield platform serving 1,200+ agents and 5,000+ tasks/day and
+reduced peak API latency from ~7s to <150ms through async processing, Redis caching, database indexing, and query optimization.
+Currently building Job Copilot, combining production-style backend architecture with LLM integration, structured outputs, evidence
+grounding, deterministic validation, and AI evaluation.
+EXPERIENCE
+MobiKwik - Software Development Engineer I
+Feb 2026 - Jul 2026
+- Owned end-to-end design and delivery of a greenfield Field Service Management platform using Java, Spring Boot, MySQL, Redis,
+and REST APIs; shipped from zero to production in 2 months.
+- Designed concurrency-safe transactional task creation and assignment for 1,200+ agents processing 5,000+ tasks/day, with
+non-terminal uniqueness, per-agent capacity controls, explicit lifecycle transitions, and deterministic fallback handling.
+- Diagnosed a critical production bottleneck with Grafana and moved suitable DB writes and audit work off the request path using
+Spring @Async, cutting peak API latency from ~7s to <150ms.
+- Shipped 30+ performance and reliability improvements across Redis caching, composite indexing, query optimization, pagination,
+aggregation queries, in-memory processing, production debugging, and operational issue resolution.
+- Consumed production payment events through Kafka and integrated with an internal notification API to trigger merchant push
+notifications, implementing retry with backoff and DLQ handling for terminal failures.
+- Instrumented services with Spring Boot Actuator, Micrometer, and Grafana; built REST APIs and aggregation workflows for
+operations dashboards and merchant-lending journeys.
+MobiKwik - Software Development Engineer Intern
+Jul 2025 - Jan 2026
+- Developed production backend APIs for Merchant Panel onboarding, dynamic forms, dashboards, and document workflows using
+Java, Spring Boot, PostgreSQL, and MongoDB.
+- Built an event-driven Soundbox ACK pipeline using AWS IoT/MQTT and Amazon SQS with idempotent processing and retry/DLQ
+handling; improved ACK processing to ~2x faster and expanded localization from 2 to 5 languages.
+PROJECTS
+Job Copilot - AI Job Discovery, Intelligence & Matching Platform | GitHub
+Java | Spring Boot | PostgreSQL | Redis | REST APIs | LLM Integration | Docker
+- Building an AI-assisted platform for job discovery, structured requirement extraction, resume ingestion, authoritative candidate
+profiles, deterministic fit assessment, and opportunity ranking through Spring Boot APIs and PostgreSQL-backed workflows.
+- Designed a provider-neutral LLM pipeline with structured decoding, source-evidence grounding, deterministic Java validation, and
+exactly-once model execution with no hidden retry/repair behavior; validated the integration against a real LLM provider.
+- Built versioned human-labelled golden cases and evaluation harnesses for candidate extraction, job-requirement extraction,
+matching/ranking, and decision readiness, enabling deterministic regression and parity validation of AI-assisted workflows.
+- Built authoritative ATS ingestion and reconciliation with database-enforced invariants, concurrency controls, idempotency,
+leases/heartbeats, failure recovery, scheduled synchronization, and PostgreSQL integration testing.
+Raahi - Ride Booking Backend | GitHub
+Java | Spring Boot | PostgreSQL | AWS | Docker
+- Built modular Spring Boot REST APIs with JWT authentication, role-based authorization, and transactional ride/wallet workflows.
+- Implemented ride batching and wallet auto-pay, improving batching efficiency by 20% and reducing manual payment handling by
+40%.
+SKILLS
+Languages: Java, C++, Python, SQL, JavaScript
+Backend: Spring Boot, REST APIs, Microservices, Spring Data JPA, Hibernate, Transactions, Async Processing, Caching
+AI Engineering: LLM Integration, Structured Outputs, Prompt Engineering, Evidence Grounding, Deterministic Validation, Evaluation
+Harnesses
+Data & Distributed Systems: MySQL, PostgreSQL, MongoDB, Redis, Kafka, Amazon SQS, AWS IoT/MQTT, Event-Driven
+Architecture, Idempotency, Retry/DLQ
+Cloud & Engineering: AWS, Docker, Git, Maven, CI/CD, Grafana, Micrometer, Spring Boot Actuator, System Design, Multithreading,
+Debugging
+EDUCATION
+National Institute of Technology, Tiruchirappalli - Master of Computer Applications | 2021 - 2024 | CGPA 7.26
+University of Delhi, DDUC - B.Sc. (Hons.) Computer Science | 2018 - 2021 | CGPA 7.47
+ACHIEVEMENTS
+- Vice President, Sanganika: Led a 200+ member technical community and organized hackathons with 1,500+ participants.
+- Mentored 100+ students through Data Structures, Algorithms, and System Design workshops.

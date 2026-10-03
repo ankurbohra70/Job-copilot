@@ -4,7 +4,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProfileWorkspace } from './AppLayout'
 import { ProfilePage } from '../features/profile/ProfilePage'
-import { sampleProfile } from '../test/fixtures'
+import { sampleProfile, sampleFactProfile } from '../test/fixtures'
 import type { CandidateProfileConfirmationRequest } from '../api/types'
 
 function jsonResponse(status: number, body: unknown) {
@@ -22,8 +22,8 @@ describe('profile identity binding', () => {
   })
 
   it('does not keep profile A mutable on route B or accept stale A responses', async () => {
-    const profileA = sampleProfile({ id: 1, facts: { ...sampleProfile().facts, fullName: 'Ada One' } })
-    const profileB = sampleProfile({ id: 2, resumeId: 8, facts: { ...sampleProfile().facts, fullName: 'Bob Two' } })
+    const profileA = sampleFactProfile({ id: 1, facts: { ...sampleFactProfile().facts, fullName: 'Ada One' } })
+    const profileB = sampleProfile({ id: 2, resumeId: 8, facts: { ...sampleProfile().facts, fullName: 'Bob Two', professionalLinks: [{ type: 'GITHUB', url: 'https://github.com/bob' }] } })
     let releaseA: ((value: unknown) => void) | undefined
     const delayedA = new Promise((resolve) => {
       releaseA = resolve
@@ -73,5 +73,8 @@ describe('profile identity binding', () => {
     expect(puts[0]?.url).toContain('/api/candidate-profiles/2/confirmation')
     expect(puts[0]?.body.facts.fullName).toBe('Bob Two')
     expect(JSON.stringify(puts[0]?.body)).not.toContain('Ada One')
+    expect(puts[0]?.body.facts.professionalLinks?.[0]?.url).toBe('https://github.com/bob')
+    expect(JSON.stringify(puts[0]?.body)).not.toContain('https://github.com/ada')
+    expect(puts[0]?.body).not.toHaveProperty('factExtraction')
   })
 })

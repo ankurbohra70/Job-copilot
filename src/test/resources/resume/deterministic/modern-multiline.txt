@@ -1,0 +1,19 @@
+Technical Skills
+Java, Spring Boot, PostgreSQL, React.js, Redis, AWS
+Work Experience
+MobiKwik - Software Development Engineer I
+Feb 2026 - Jul 2026
+- Built backend systems
+MobiKwik - Software Development Engineer Intern
+Jul 2025 - Jan 2026
+- Built cloud integrations
+Academic Background
+National Institute of Technology, Tiruchirappalli 2021 - 2024
+Master of Computer Applications (MCA) - CGPA: 7.26 Trichy, India
+Deen Dayal Upadhyaya College, University of Delhi 2018 - 2021
+B.Sc (Hons) Computer Science - CGPA: 7.47 New Delhi, India
+Personal Projects
+Raahi App | Spring Boot, PostgreSQL, React Native, Google Maps Link
+- Implemented booking APIs
+Personalized Travel Recommender | Java, PostgreSQL, Redis, AWS Link
+- Added personalized recommendations

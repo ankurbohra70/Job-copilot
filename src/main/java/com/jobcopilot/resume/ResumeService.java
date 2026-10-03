@@ -16,9 +16,18 @@ public class ResumeService {
     private final CandidateProfileExtractor profileExtractor;
     private final ResumePersistenceService persistence;
     private final ResumeProcessingProperties limits;
+    private final CandidateFactsExtractor factsExtractor;
+    private final CandidateProfileValidator validator;
+    @org.springframework.beans.factory.annotation.Autowired
+    public ResumeService(ResumeTextExtractor extractor, CandidateProfileExtractor profileExtractor,
+            ResumePersistenceService persistence, ResumeProcessingProperties limits,
+            CandidateFactsExtractor factsExtractor, CandidateProfileValidator validator) {
+        this.extractor = extractor; this.profileExtractor = profileExtractor; this.persistence = persistence; this.limits = limits;
+        this.factsExtractor = factsExtractor; this.validator = validator;
+    }
     public ResumeService(ResumeTextExtractor extractor, CandidateProfileExtractor profileExtractor,
             ResumePersistenceService persistence, ResumeProcessingProperties limits) {
-        this.extractor = extractor; this.profileExtractor = profileExtractor; this.persistence = persistence; this.limits = limits;
+        this(extractor, profileExtractor, persistence, limits, new DeterministicCandidateFactsExtractor(), new CandidateProfileValidator());
     }
     // Deliberately not transactional: untrusted PDF parsing never holds a DB transaction.
     public ResumeResponse upload(MultipartFile file) {
@@ -37,11 +46,13 @@ public class ResumeService {
         var extraction = extractor.extract(bytes);
         LocalDate date = LocalDate.now(ZoneOffset.UTC);
         var profileExtraction = profileExtractor.extract(extraction.text(), date);
+        var canonicalProfile = validator.canonicalize(profileExtraction.profile());
+        var factExtraction = factsExtractor.extract(extraction.document(), canonicalProfile, date);
         String displayName = name.replace('\\', '/');
         displayName = displayName.substring(displayName.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
         if (displayName.length() > 255) displayName = displayName.substring(displayName.length() - 255);
-        return persistence.saveDraft(displayName, bytes.length, extraction.text(), extraction.pageCount(), extraction.version(),
-                profileExtraction.profile(), date, profileExtraction.extractorVersion(), profileExtraction.vocabularyVersion());
+        return persistence.saveDraft(displayName, bytes.length, extraction, canonicalProfile, date,
+                profileExtraction.extractorVersion(), profileExtraction.vocabularyVersion(), factExtraction);
     }
 }
 

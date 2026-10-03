@@ -29,6 +29,7 @@ export function factsToRequest(facts: CandidateProfileFacts): CandidateProfileRe
     workAuthorization: facts.workAuthorization ?? 'UNKNOWN',
     sponsorshipRequired: facts.sponsorshipRequired ?? 'UNKNOWN',
     noticePeriodDays: facts.noticePeriodDays,
+    professionalLinks: (facts.professionalLinks ?? []).map((link) => ({ ...link })),
   }
 }
 
@@ -66,7 +67,10 @@ export function buildConfirmation(
   return {
     expectedRevision: authority.revision,
     profile: mergeProfile(authority.profile, edits),
-    facts: edits.facts,
+    facts: {
+      ...factsToRequest(edits.facts),
+      professionalLinks: (edits.facts.professionalLinks ?? []).map((link) => ({ ...link, url: link.url.trim() })),
+    },
   }
 }
 

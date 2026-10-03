@@ -23,6 +23,7 @@ class DeterministicCandidateProfileExtractorTest {
 
         assertEquals(parser.parse(text, assessedOn), result.profile());
         assertEquals(DeterministicProfileParser.VERSION, result.extractorVersion());
+        assertEquals("rules-v5", result.extractorVersion());
         assertEquals("v1", result.vocabularyVersion());
     }
 

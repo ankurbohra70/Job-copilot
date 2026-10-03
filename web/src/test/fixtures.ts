@@ -52,6 +52,7 @@ export function sampleProfile(overrides: Partial<CandidateProfileResponse> = {})
       workAuthorization: 'UNKNOWN',
       sponsorshipRequired: 'UNKNOWN',
       noticePeriodDays: null,
+      professionalLinks: [],
     },
     schemaVersion: 'v1',
     parserVersion: 'deterministic-v1',
@@ -62,6 +63,25 @@ export function sampleProfile(overrides: Partial<CandidateProfileResponse> = {})
     confirmedAt: null,
     createdAt: '2026-09-21T00:00:00',
     updatedAt: '2026-09-21T00:00:00',
+    ...overrides,
+  }
+}
+
+export function sampleFactProfile(overrides: Partial<CandidateProfileResponse> = {}): CandidateProfileResponse {
+  const base = sampleProfile()
+  const facts: CandidateProfileResponse['facts'] = {
+    ...base.facts,
+    phone: '+442079460018',
+    professionalLinks: [{ type: 'GITHUB', url: 'https://github.com/ada' }, { type: 'LINKEDIN', url: 'https://linkedin.com/in/ada' }],
+  }
+  return {
+    ...base, facts, parserVersion: 'rules-v5', factExtractorVersion: 'facts-v1',
+    factExtraction: {
+      schemaVersion: 'v1', suggestions: structuredClone(facts), diagnostics: [],
+      evidence: [{ field: 'email', suggestedValue: 'ada@example.com', rawValue: 'ada@example.com',
+        confidence: 'HIGH', derivation: 'HEADER_TEXT', sourceText: 'Email: ada@example.com',
+        page: 1, lineReference: 'p1-l2', bounds: { x: 40, y: 70, width: 150, height: 12 }, workReference: null }],
+    },
     ...overrides,
   }
 }

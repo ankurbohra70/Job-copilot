@@ -30,6 +30,39 @@ class ResumePersistenceIntegrationTest {
     @Autowired CandidateProfileRepository profiles;
     @Autowired JobSearchPreferenceService preferences;
     @Autowired ResumeRouteService routes;
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"rules-v1", "rules-v2", "rules-v3", "rules-v4", "rules-v5"})
+    void newlyExtractedV5ProfilesLeavePersistedOlderProfilesUnchanged(String oldVersion) {
+        LocalDate assessedOn = LocalDate.of(2026, 10, 3);
+        String text = "Experience\nBackend Engineer at Acme\nJan 2025 - Feb 2025\n- Built Java services\nwith reliable recovery.\nProjects\nAlpha | GitHub\n- Built Java services\nwith reliable recovery.\n";
+        var oldData = new CandidateProfileData(List.of("java"), null, null,
+                CandidateProfileData.Assessment.UNKNOWN,
+                List.of(new CandidateProfileData.WorkExperience("Backend Engineer", "Acme", null, null,
+                        false, List.of("- Built Java services"), "Backend Engineer at Acme\nJan 2025 - Feb 2025\n- Built Java services\nwith reliable recovery.")), List.of(),
+                List.of(new CandidateProfileData.Project("Alpha", List.of("- Built Java services"), List.of("java"), "Alpha | GitHub\n- Built Java services"),
+                        new CandidateProfileData.Project("with reliable recovery.", List.of(), List.of(), "with reliable recovery.")),
+                List.of(), List.of(), List.of(), List.of());
+        var savedOld = service.saveDraft("old.pdf", 100, text, 1, "pdfbox-3.0.8", oldData,
+                assessedOn, oldVersion, "v1").candidateProfile();
+        var old = service.getProfile(savedOld.id());
+        var extraction = new DeterministicCandidateProfileExtractor(new DeterministicProfileParser())
+                .extract(text, assessedOn);
+        var fresh = service.saveDraft("fresh.pdf", 100, text, 1, "pdfbox-3.0.8", extraction.profile(),
+                assessedOn, extraction.extractorVersion(), extraction.vocabularyVersion()).candidateProfile();
+
+        assertEquals(old, service.getProfile(old.id()));
+        assertEquals(oldData, service.getProfile(old.id()).profile());
+        assertEquals(oldVersion, service.getProfile(old.id()).parserVersion());
+        assertEquals(old.vocabularyVersion(), service.getProfile(old.id()).vocabularyVersion());
+        assertEquals(old.revision(), service.getProfile(old.id()).revision());
+        assertEquals(old.createdAt(), service.getProfile(old.id()).createdAt());
+        assertEquals(old.updatedAt(), service.getProfile(old.id()).updatedAt());
+        assertNotEquals(old.id(), fresh.id());
+        assertEquals("rules-v5", service.getProfile(fresh.id()).parserVersion());
+        assertEquals(List.of("- Built Java services with reliable recovery."), fresh.profile().workExperience().getFirst().bullets());
+        assertEquals(1, fresh.profile().projects().size());
+        assertEquals(List.of("- Built Java services with reliable recovery."), fresh.profile().projects().getFirst().bullets());
+    }
     @Test void jsonRoundTripAndLifecyclePreserveUnknownEvidence() {
         String text = "Experience\nBackend Engineer at Acme\n2020 - 2023\n- Java services\nEducation\nUniversity";
         var data = new DeterministicProfileParser().parse(text,LocalDate.of(2026,9,7));

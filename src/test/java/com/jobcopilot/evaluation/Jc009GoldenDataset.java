@@ -66,7 +66,7 @@ public final class Jc009GoldenDataset {
                 "matching vocabulary version mismatch");
         require("jc005-v1".equals(requiredText(root, "jobRequirementExtractorVersion")),
                 "job extractor version mismatch");
-        require("rules-v1".equals(requiredText(root, "candidateExtractorVersion")),
+        require("rules-v5".equals(requiredText(root, "candidateExtractorVersion")),
                 "candidate extractor version mismatch");
         require("deterministic-v1".equals(requiredText(root, "matchingAlgorithmVersion")),
                 "matching algorithm version mismatch");

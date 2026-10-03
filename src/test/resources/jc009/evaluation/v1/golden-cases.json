@@ -4,7 +4,7 @@
   "reviewedBy": "JC-009 release reviewer",
   "reviewedAt": "2026-09-15",
   "matchingVocabularyVersion": "v1",
-  "candidateExtractorVersion": "rules-v1",
+  "candidateExtractorVersion": "rules-v5",
   "jobRequirementExtractorVersion": "jc005-v1",
   "matchingAlgorithmVersion": "deterministic-v1",
   "decisionPolicyVersion": "application-decision-v1",

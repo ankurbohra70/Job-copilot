@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { api } from '../../api/client'
 import { isApiError } from '../../api/errors'
-import type { CandidateProfileResponse, CandidateFactState } from '../../api/types'
+import type { CandidateProfileResponse, CandidateFactState, ProfessionalLinkType } from '../../api/types'
 import { Banner, Field, Loading } from '../../shared/ui/Feedback'
 import { buildConfirmation, cloneEdits, fromProfile, type VisibleProfileEdits } from './confirmPayload'
 
@@ -13,6 +13,7 @@ interface Outlet {
 }
 
 const FACT_STATES: CandidateFactState[] = ['UNKNOWN', 'YES', 'NO']
+const LINK_TYPES: ProfessionalLinkType[] = ['LINKEDIN', 'GITHUB', 'LEETCODE', 'WEBSITE', 'OTHER']
 
 export function ProfilePage() {
   const { profile, setProfile, profileId } = useOutletContext<Outlet>()
@@ -122,7 +123,7 @@ export function ProfilePage() {
     <section className="stack">
       <h1>Review candidate profile</h1>
       {authority.status === 'DRAFT' ? (
-        <Banner kind="warn">This profile is a draft. Confirm it before ranking or applying.</Banner>
+        <Banner kind="warn">This profile is a draft. Resume suggestions need your review and confirmation before ranking or applying.</Banner>
       ) : (
         <Banner kind="ok">This profile is confirmed. You can correct it and confirm again.</Banner>
       )}
@@ -148,6 +149,27 @@ export function ProfilePage() {
         <Banner kind="info">
           Extraction warnings: {warnings.join('; ')}
         </Banner>
+      ) : null}
+
+      {authority.factExtraction ? (
+        <details className="card">
+          <summary>Original resume suggestions and evidence</summary>
+          <p>These are the original extracted suggestions. Corrections you make are yours; this evidence does not claim that corrected values appeared in your resume.</p>
+          {authority.factExtraction.evidence.length === 0 ? <p>No supported contact suggestions were found.</p> : (
+            <ul>
+              {authority.factExtraction.evidence.map((item, index) => (
+                <li key={index}>
+                  <strong>{item.field}</strong>: {item.suggestedValue} ({item.confidence}, {item.derivation.replaceAll('_', ' ').toLowerCase()})
+                  {item.page !== null ? ` — page ${item.page}` : null}
+                  <blockquote>{item.sourceText}</blockquote>
+                </li>
+              ))}
+            </ul>
+          )}
+          {authority.factExtraction.diagnostics.length > 0 ? (
+            <p>Some suggestions were unavailable or ambiguous: {authority.factExtraction.diagnostics.map((code) => code.replaceAll('_', ' ').toLowerCase()).join('; ')}.</p>
+          ) : null}
+        </details>
       ) : null}
 
       <form className="stack" onSubmit={onConfirm}>
@@ -189,6 +211,34 @@ export function ProfilePage() {
               onChange={(event) => patchFacts(edits, setEdits, { currentTitle: emptyToNull(event.target.value) })}
             />
           </Field>
+          <div className="stack" aria-label="Professional links">
+            <h2>Professional links</h2>
+            {(edits.facts.professionalLinks ?? []).map((link, index) => (
+              <div key={index} className="stack">
+                <Field id={`link-type-${index}`} label={`Link type ${index + 1}`}>
+                  <select id={`link-type-${index}`} value={link.type} onChange={(event) => {
+                    const professionalLinks = (edits.facts.professionalLinks ?? []).map((item, i) => i === index ? { ...item, type: event.target.value as ProfessionalLinkType } : item)
+                    patchFacts(edits, setEdits, { professionalLinks })
+                  }}>
+                    {LINK_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </Field>
+                <Field id={`link-url-${index}`} label={`Link URL ${index + 1}`}>
+                  <input id={`link-url-${index}`} value={link.url} maxLength={2048} required onChange={(event) => {
+                    const professionalLinks = (edits.facts.professionalLinks ?? []).map((item, i) => i === index ? { ...item, url: event.target.value } : item)
+                    patchFacts(edits, setEdits, { professionalLinks })
+                  }} />
+                </Field>
+                <button type="button" className="secondary" onClick={() => patchFacts(edits, setEdits, {
+                  professionalLinks: (edits.facts.professionalLinks ?? []).filter((_, i) => i !== index),
+                })}>Remove link {index + 1}</button>
+              </div>
+            ))}
+            <button type="button" className="secondary" disabled={(edits.facts.professionalLinks?.length ?? 0) >= 20}
+              onClick={() => patchFacts(edits, setEdits, {
+                professionalLinks: [...(edits.facts.professionalLinks ?? []), { type: 'WEBSITE', url: '' }],
+              })}>Add professional link</button>
+          </div>
           <Field id="totalRelevantExperienceMonths" label="Relevant experience (months)">
             <input
               id="totalRelevantExperienceMonths"

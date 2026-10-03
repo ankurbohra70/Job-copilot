@@ -19,6 +19,37 @@ class SchemaMigrationIntegrationTest {
         if (target != null) config.target(target);
         return config.load();
     }
+    @Test void v10AddsNullableCapabilitiesWithoutChangingHistoricalResumeOrProfileData() throws Exception {
+        flyway("upgrade_v9_facts", "9").migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            for (int version = 1; version <= 5; version++) {
+                statement.execute("INSERT INTO upgrade_v9_facts.resumes(id,file_name,size_bytes,media_type,extracted_text,page_count,extractor_version,created_at) "
+                        + "VALUES (" + version + ",'historical.pdf',100,'application/pdf','Frozen source text',1,'pdfbox-3.0.8',TIMESTAMP '2026-01-01 00:00:00')");
+                statement.execute("INSERT INTO upgrade_v9_facts.candidate_profiles(id,resume_id,profile_data,schema_version,parser_version,vocabulary_version,assessed_on,created_at,updated_at,status,revision,confirmed_at) "
+                        + "VALUES (" + version + "," + version + ",'{}'::jsonb,'v1','rules-v" + version + "','v1',DATE '2026-01-01',"
+                        + "TIMESTAMP '2026-01-01 00:00:00',TIMESTAMP '2026-01-02 00:00:00','CONFIRMED',7,TIMESTAMP '2026-01-02 00:00:00')");
+            }
+            String beforeProfiles, beforeResumes;
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(p) ORDER BY id)::text FROM upgrade_v9_facts.candidate_profiles p")) {
+                assertTrue(rows.next()); beforeProfiles = rows.getString(1);
+            }
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) ORDER BY id)::text FROM upgrade_v9_facts.resumes r")) {
+                assertTrue(rows.next()); beforeResumes = rows.getString(1);
+            }
+            var upgraded = flyway("upgrade_v9_facts",null);
+            assertEquals(1,upgraded.migrate().migrationsExecuted); upgraded.validate();
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(p) - 'professional_links' - 'fact_extractor_version' - 'fact_extraction' ORDER BY id)::text FROM upgrade_v9_facts.candidate_profiles p")) {
+                assertTrue(rows.next()); assertEquals(beforeProfiles,rows.getString(1));
+            }
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) - 'layout_version' ORDER BY id)::text FROM upgrade_v9_facts.resumes r")) {
+                assertTrue(rows.next()); assertEquals(beforeResumes,rows.getString(1));
+            }
+            try (var rows = statement.executeQuery("SELECT count(*) FROM upgrade_v9_facts.candidate_profiles WHERE professional_links IS NULL AND fact_extractor_version IS NULL AND fact_extraction IS NULL")) {
+                assertTrue(rows.next()); assertEquals(5,rows.getInt(1));
+            }
+        }
+    }
 
     @Test void cleanDatabaseMigratesAndCanBeValidatedRepeatedly() {
         var flyway = flyway("fresh", null);
@@ -62,7 +93,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v3", null);
-        assertEquals(6, upgraded.migrate().migrationsExecuted);
+        assertEquals(7, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -106,7 +137,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v4", null);
-        assertEquals(5, upgraded.migrate().migrationsExecuted);
+        assertEquals(6, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -185,7 +216,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v5", null);
-        assertEquals(4, upgraded.migrate().migrationsExecuted);
+        assertEquals(5, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
 
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -259,7 +290,7 @@ class SchemaMigrationIntegrationTest {
                     """);
         }
         var upgraded = flyway("upgrade_v6", null);
-        assertEquals(3, upgraded.migrate().migrationsExecuted);
+        assertEquals(4, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -386,7 +417,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v7", null);
-        assertEquals(2, upgraded.migrate().migrationsExecuted);
+        assertEquals(3, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
@@ -451,7 +482,7 @@ class SchemaMigrationIntegrationTest {
         }
 
         var upgraded = flyway("upgrade_v8", null);
-        assertEquals(1, upgraded.migrate().migrationsExecuted);
+        assertEquals(2, upgraded.migrate().migrationsExecuted);
         upgraded.validate();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {

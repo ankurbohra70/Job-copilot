@@ -9,4 +9,5 @@ public record CandidateProfileConfirmationRequest(
         @Min(1) long expectedRevision,
         @NotNull CandidateProfileData profile,
         @NotNull @Valid CandidateProfileRequest facts) {
+    @Override public String toString() { return "CandidateProfileConfirmationRequest[redacted]"; }
 }

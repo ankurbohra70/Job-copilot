@@ -10,6 +10,54 @@ import static org.junit.jupiter.api.Assertions.*;
 class CandidateProfileValidatorTest {
     private final CandidateProfileValidator validator = new CandidateProfileValidator();
 
+    @Test void acceptsLongWorkBulletsThroughMaximumButRetainsAllOtherBounds() {
+        for (int length : new int[]{256, 20_000}) {
+            String bullet = "x".repeat(length);
+            assertEquals(List.of(bullet), validator.canonicalize(workBullets(List.of(bullet)))
+                    .workExperience().getFirst().bullets());
+        }
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(List.of("x".repeat(20_001)))));
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(List.of("- invalid\ncontrol"))));
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(List.of("- invalid\tcontrol"))));
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(List.of("- invalid\u0000control"))));
+        List<String> tooMany = java.util.stream.IntStream.range(0, 501).mapToObj(i -> "bullet " + i).toList();
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(tooMany)));
+        List<String> tooMuchText = java.util.stream.IntStream.range(0, 26)
+                .mapToObj(i -> i + "x".repeat(19_998)).toList();
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(workBullets(tooMuchText)));
+        CandidateProfileData oversizedTitle = new CandidateProfileData(List.of(), null, null,
+                CandidateProfileData.Assessment.UNKNOWN,
+                List.of(new CandidateProfileData.WorkExperience("x".repeat(256), "Acme", null, null, false, List.of(), "source")),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(oversizedTitle));
+    }
+
+    private static CandidateProfileData workBullets(List<String> bullets) {
+        return new CandidateProfileData(List.of(), null, null, CandidateProfileData.Assessment.UNKNOWN,
+                List.of(new CandidateProfileData.WorkExperience("Engineer", "Acme", null, null, false, bullets, "source")),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    @Test void acceptsFoldedProjectBulletsButRetainsTextAndAggregateBounds() {
+        String bullet = "- " + "wrapped project content ".repeat(20).strip();
+        CandidateProfileData data = projectBullet(bullet);
+        assertEquals(List.of(bullet), validator.canonicalize(data).projects().getFirst().bullets());
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(projectBullet("x".repeat(20_001))));
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(projectBullet("- invalid\ncontrol")));
+        List<CandidateProfileData.Project> large = java.util.stream.IntStream.range(0, 26)
+                .mapToObj(i -> new CandidateProfileData.Project("Project " + i, List.of("x".repeat(20_000)), List.of(), "source"))
+                .toList();
+        assertThrows(IllegalArgumentException.class, () -> validator.canonicalize(new CandidateProfileData(
+                List.of(), null, null, CandidateProfileData.Assessment.UNKNOWN, List.of(), List.of(), large,
+                List.of(), List.of(), List.of(), List.of())));
+    }
+
+    private static CandidateProfileData projectBullet(String bullet) {
+        return new CandidateProfileData(List.of(), null, null, CandidateProfileData.Assessment.UNKNOWN,
+                List.of(), List.of(), List.of(new CandidateProfileData.Project("Tool", List.of(bullet), List.of(), "source")),
+                List.of(), List.of(), List.of(), List.of());
+    }
+
     @Test void canonicalizesFullStructuredProfileWithoutChangingEvidenceOrder() {
         CandidateProfileData input = new CandidateProfileData(List.of(" Java ", "java"), 12, 12,
                 CandidateProfileData.Assessment.KNOWN,

@@ -1,0 +1,52 @@
+ANKUR BOHRA
+ 9315593938 # ankurbohra70@gmail.com ï Linkedin  Leetcode
+Education
+National Institute of Technology, Tiruchirappalli 2021 – 2024
+Master of Computer Applications (MCA) - CGPA - 7.26 Trichy, Tamil Nadu
+Deen Dayal Upadhyaya College, University of Delhi 2018 – 2021
+B.Sc Honours Computer Science - CGPA - 7.47 New Delhi
+Higher Secondary XII (CBSE) - 89.75% 2016 – 2018
+Secondary X (ICSE), - 92.40% 2016
+Projects
+ReClothenation | HTML, CSS, JS, Bootstrap, NodeJS, MongoDB, EJS Project Link
+• Eco-friendly clothing donation platform promoting reuse and recycling of used clothes by facilitating contributions to
+NGOs and Recycling companies.
+• Implemented features such as Search and filtering, recycling and reuse options, sustainability tips, educational resources
+• Revolutionizing sustainable fashion and reducing waste.
+Technofania Website | HTML, CSS, Javascript, NodeJS, ExpressJs, ReactJS, MongoDB Project Link
+• Developed website for departmental club, Open Source Open Community, technical event (Hosted on Digital Ocean)
+• Participants could register at the site and participate in the Technical and Non-Technical event
+Positions of Responsibility
+Vice President, Sanganika July 2020 - May 2021
+Department of Computer Science, DDUC, University of Delhi, New Delhi
+• Managed year-round events in the department coordinating with 7+ teams like sponsorship, promotion, logistics
+• Spearheaded a team of 200+ students to organise multiple national and intra-college events and competitions
+• Organised Tech-Marathon, annual tech fest of DDUC, consisting 12+ national events with 1500+ footfall
+Competitive Programmers Lead July 2020 - May 2021
+Codechef Chapter, DDUC, University of Delhi, New Delhi
+• Problem setter and tester on Codechef for Code-Benders, a national coding competition with a footfall of 400+ students
+• Acted as Contest admin for 10+ intra-college monthly coding contests across the tenure
+• Proficient in crafting coding challenges, generating diverse test cases, and devising effective problem-solving solutions
+• Organised and conducted workshops on Introduction to CP and Talk to Learn, influencing 100+ students
+Treasurer January 2022 - Present
+OSOC, National Institute of Technology, Tiruchirappalli
+• Organized Technofania, intra-department Annual event of OSOC with footfall of 100+ students
+• Acted as contest admin for Hawk-eyed, edge-case solving event with 50+ participation
+Skills
+Languages: C++, C, Python, JavaScript
+Development: HTML5, CSS, ReactJs, MongoDB, NodeJS, Bootstrap, Git, GitHub, MySQL, SQLite
+Certifications: Codechef Snackdown 2021, Pre-Elimination Round
+Coursework: Data Structures & Algorithms, OOPs , DBMS, Computer Networks , Operating System, Shell Programming
+Soft Skills: Management, Problem Solving, Critical thinking, Quality Assurance, Leadership, Team collaboration
+Achievements
+• Awarded Second Prize in Hardcode and Crack-and-Swap, inter-college coding competition, Annual Tech-fest of Shaheed
+Rajguru College, Delhi University, 2018
+• Won Second Prize in Blackbox, inter-college coding competition at Kalindi College, University of Delhi, 2018
+• Secured 98%ile in JEE MAINS among 15 lakhs candidates, 2018
+• Felicitated and awarded merit scholarship by school for securing second rank in CISCE Boards examination
+Extracurricular
+• Secured First Position in ‘Cover the News’ event in Talk 2 Learn’22 a cultural fest organized at NIT, Trichy
+• Awarded First Prize in ‘Mad-for-ad’, a sales pitch competition in Talk 2 Learn’22 at NIT, Trichy
+• Secured First Prize in Tech Wars in DDUC at Techmarathon’20 the Annual Tech Fest
+• Member of Sponsorship Team, Promotion Team and Logistics Team at Techmarathon’18, Annual Tech fest of DDUC
+• Member of Graphics team for the academic year 2018-19 in Kalamkaar, Literary Society, DDUC

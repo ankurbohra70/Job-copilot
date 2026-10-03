@@ -38,7 +38,8 @@ class ResumeServiceTest {
             return new ResumeTextExtractor.Extraction("Java backend experience",1,"test");
         });
         service.upload(new MockMultipartFile("file","C:\\unsafe\\resume.PDF","application/octet-stream","%PDF-".getBytes()));
-        verify(persistence).saveDraft(eq("resume.PDF"),eq(5L),eq("Java backend experience"),eq(1),eq("test"),any(),any(),eq("rules-v1"),eq("v1"));
+        verify(persistence).saveDraft(eq("resume.PDF"),eq(5L),any(ResumeTextExtractor.Extraction.class),
+                any(),any(),eq("rules-v5"),eq("v1"),any(CandidateFactExtraction.class));
     }
 }
 

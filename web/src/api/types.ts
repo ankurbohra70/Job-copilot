@@ -76,6 +76,28 @@ export interface CandidateProfileFacts {
   workAuthorization: CandidateFactState
   sponsorshipRequired: CandidateFactState
   noticePeriodDays: number | null
+  professionalLinks?: ProfessionalLink[]
+}
+
+export type ProfessionalLinkType = 'LINKEDIN' | 'GITHUB' | 'LEETCODE' | 'WEBSITE' | 'OTHER'
+export interface ProfessionalLink { type: ProfessionalLinkType; url: string }
+export interface CandidateFactEvidence {
+  field: string
+  suggestedValue: string
+  rawValue: string | null
+  confidence: 'HIGH' | 'MEDIUM'
+  derivation: 'HEADER_TEXT' | 'PDF_URI_ANNOTATION' | 'STRUCTURED_WORK'
+  sourceText: string
+  page: number | null
+  lineReference: string | null
+  bounds: { x: number; y: number; width: number; height: number } | null
+  workReference: number | null
+}
+export interface CandidateFactExtractionData {
+  schemaVersion: string
+  suggestions: CandidateProfileFacts
+  evidence: CandidateFactEvidence[]
+  diagnostics: string[]
 }
 
 export interface CandidateProfileResponse {
@@ -93,6 +115,8 @@ export interface CandidateProfileResponse {
   createdAt: string
   updatedAt: string
   totalYearsExperience?: number | null
+  factExtractorVersion?: string | null
+  factExtraction?: CandidateFactExtractionData | null
 }
 
 export interface CandidateProfileRequest {
@@ -105,6 +129,7 @@ export interface CandidateProfileRequest {
   workAuthorization: CandidateFactState
   sponsorshipRequired: CandidateFactState
   noticePeriodDays: number | null
+  professionalLinks?: ProfessionalLink[]
 }
 
 export interface CandidateProfileConfirmationRequest {
@@ -121,6 +146,7 @@ export interface ResumeResponse {
   extractorVersion: string
   createdAt: string
   candidateProfile: CandidateProfileResponse
+  layoutVersion?: string | null
 }
 
 export interface JobSearchPreferenceData {

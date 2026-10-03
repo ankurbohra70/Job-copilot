@@ -4,7 +4,7 @@ import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProfilePage } from './ProfilePage'
-import { sampleProfile } from '../../test/fixtures'
+import { sampleProfile, sampleFactProfile } from '../../test/fixtures'
 import type { CandidateProfileConfirmationRequest, CandidateProfileResponse } from '../../api/types'
 
 function Host({ initial }: { initial: CandidateProfileResponse }) {
@@ -27,7 +27,7 @@ describe('ProfilePage confirmation', () => {
   })
 
   it('keeps submitted edits after 409 and retries with the new revision and hidden fields', async () => {
-    const first = sampleProfile()
+    const first = sampleFactProfile()
     const refetch = sampleProfile({
       revision: 2,
       facts: { ...first.facts, fullName: 'Server Copy' },
@@ -70,6 +70,8 @@ describe('ProfilePage confirmation', () => {
     const name = screen.getByRole('textbox', { name: /Full name/ })
     await user.clear(name)
     await user.type(name, 'Edited_Name')
+    await user.clear(screen.getByRole('textbox', { name: 'Link URL 1' }))
+    await user.type(screen.getByRole('textbox', { name: 'Link URL 1' }), 'https://github.com/grace')
     await user.click(screen.getByRole('button', { name: 'Confirm profile' }))
     expect(await screen.findByText(/The profile revision changed/)).toBeInTheDocument()
     expect(screen.queryByText('Profile confirmed.')).toBeNull()
@@ -84,6 +86,8 @@ describe('ProfilePage confirmation', () => {
     expect(puts[1]?.profile.evidence).toEqual(first.profile.evidence)
     expect(puts[1]?.profile.workExperience[0]?.sourceText).toBe('Engineer at Acme 2020-present')
     expect(puts[1]?.profile.keywords).toEqual(['server-keyword'])
+    expect(puts[1]?.facts.professionalLinks?.[0]?.url).toBe('https://github.com/grace')
+    expect(puts[1]).not.toHaveProperty('factExtraction')
   })
 
   it('replaces the form with the refreshed server profile when requested', async () => {
@@ -123,5 +127,41 @@ describe('ProfilePage confirmation', () => {
     await user.click(screen.getByRole('button', { name: 'Replace the form with the latest server values' }))
     expect(name).toHaveValue('Server Copy')
     expect(screen.queryByText('Profile confirmed.')).toBeNull()
+  })
+
+  it('prefills extracted scalars and links, preserves raw link typing, and supports correction and clearing', async () => {
+    const first = sampleFactProfile()
+    const puts: CandidateProfileConfirmationRequest[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as CandidateProfileConfirmationRequest
+      puts.push(body)
+      return jsonResponse(200, { ...first, facts: body.facts, profile: body.profile, status: 'CONFIRMED', revision: 2 })
+    }))
+    const user = userEvent.setup()
+    const view = render(<MemoryRouter><Routes><Route element={<Host initial={first} />}><Route index element={<ProfilePage />} /></Route></Routes></MemoryRouter>)
+    expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Ada Lovelace')
+    expect(screen.getByRole('textbox', { name: 'Phone' })).toHaveValue('+442079460018')
+    expect(screen.getByRole('textbox', { name: 'Current title' })).toHaveValue('Engineer')
+    expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('London')
+    expect(screen.getByRole('textbox', { name: 'Link URL 1' })).toHaveValue('https://github.com/ada')
+    expect(screen.getByText(/Resume suggestions need your review/)).toBeInTheDocument()
+    await user.click(screen.getByText('Original resume suggestions and evidence'))
+    expect(screen.getByText('Email: ada@example.com')).toBeInTheDocument()
+    await user.clear(screen.getByRole('textbox', { name: 'Email' }))
+    await user.click(screen.getByRole('button', { name: 'Remove link 2' }))
+    await user.click(screen.getByRole('button', { name: 'Add professional link' }))
+    const url = screen.getByRole('textbox', { name: 'Link URL 2' })
+    await user.type(url, ' https://example.org ')
+    expect(url).toHaveValue(' https://example.org ')
+    await user.click(screen.getByRole('button', { name: 'Confirm profile' }))
+    expect(await screen.findByText('Profile confirmed.')).toBeInTheDocument()
+    expect(puts[0]?.facts.email).toBeNull()
+    expect(puts[0]?.facts.professionalLinks?.[1]?.url).toBe('https://example.org')
+    expect(puts[0]).not.toHaveProperty('factExtraction')
+    expect(screen.getByText('Email: ada@example.com')).toBeInTheDocument()
+    view.unmount()
+    render(<MemoryRouter><Routes><Route element={<Host initial={first} />}><Route index element={<ProfilePage />} /></Route></Routes></MemoryRouter>)
+    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveValue('ada@example.com')
+    expect(screen.getByRole('textbox', { name: 'Link URL 1' })).toHaveValue('https://github.com/ada')
   })
 })

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
-import { sampleOpportunity, sampleProfile } from '../src/test/fixtures'
+import { sampleOpportunity, sampleProfile, sampleFactProfile } from '../src/test/fixtures'
+import type { CandidateProfileConfirmationRequest } from '../src/api/types'
 
 const profile = sampleProfile()
 const confirmed = sampleProfile({ status: 'CONFIRMED', revision: 2, confirmedAt: '2026-09-21T01:00:00' })
@@ -177,4 +178,48 @@ test('non-http apply URLs are not used as links', async ({ page }) => {
   await page.goto('/profiles/1/jobs/44')
   await expect(page.getByRole('button', { name: 'Apply' })).toBeDisabled()
   await expect(page.getByRole('link', { name: 'Apply' })).toHaveCount(0)
+})
+
+test('extracted draft facts and links survive reload, correction, and confirmation', async ({ page }) => {
+  let stored = sampleFactProfile()
+  let submitted: CandidateProfileConfirmationRequest | undefined
+  await page.route((url) => new URL(url).pathname.startsWith('/api/'), async (route) => {
+    const { pathname } = new URL(route.request().url())
+    if (pathname === '/api/resumes') return json(route, 201, {
+      id: 9, fileName: 'synthetic.pdf', sizeBytes: 12, pageCount: 1, extractorVersion: 'pdfbox-3.0.8',
+      layoutVersion: 'layout-v2', createdAt: stored.createdAt, candidateProfile: stored,
+    })
+    if (pathname.endsWith('/confirmation')) {
+      submitted = route.request().postDataJSON() as CandidateProfileConfirmationRequest
+      stored = { ...stored, facts: submitted.facts, profile: submitted.profile, status: 'CONFIRMED', revision: 2,
+        confirmedAt: '2026-10-03T12:00:00' }
+      return json(route, 200, stored)
+    }
+    return json(route, 200, stored)
+  })
+  await page.goto('/')
+  await page.setInputFiles('#resume-file', { name: 'synthetic.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
+  await page.getByRole('button', { name: 'Upload' }).click()
+  await expect(page.getByLabel('Full name')).toHaveValue('Ada Lovelace')
+  await expect(page.getByLabel('Link URL 1')).toHaveValue('https://github.com/ada')
+  await page.reload()
+  await expect(page.getByLabel('Phone')).toHaveValue('+442079460018')
+  await expect(page.getByText(/Resume suggestions need your review/)).toBeVisible()
+  await page.getByText('Original resume suggestions and evidence').click()
+  await expect(page.getByText('Email: ada@example.com')).toBeVisible()
+  await page.getByLabel('Full name').fill('Grace Hopper')
+  await page.getByLabel('Email', { exact: true }).fill('')
+  await page.getByRole('button', { name: 'Remove link 2' }).click()
+  await page.getByLabel('Link URL 1').fill('https://github.com/grace')
+  await page.getByRole('button', { name: 'Confirm profile' }).click()
+  await expect(page.getByText('Profile confirmed.')).toBeVisible()
+  expect(submitted?.facts.email).toBeNull()
+  expect(submitted?.facts.professionalLinks?.[0]?.url).toBe('https://github.com/grace')
+  expect(submitted).not.toHaveProperty('factExtraction')
+  expect(submitted?.profile.evidence).toEqual(sampleFactProfile().profile.evidence)
+  await page.reload()
+  await expect(page.getByLabel('Full name')).toHaveValue('Grace Hopper')
+  await expect(page.getByLabel('Email', { exact: true })).toHaveValue('')
+  await page.getByText('Original resume suggestions and evidence').click()
+  await expect(page.getByText('Email: ada@example.com')).toBeVisible()
 })

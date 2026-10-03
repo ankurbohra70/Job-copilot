@@ -42,6 +42,22 @@ class ResumeUploadIntegrationTest {
         return client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/resumes"))
                 .header("Content-Type","multipart/form-data; boundary=" + boundary).POST(body).build(),HttpResponse.BodyHandlers.ofString());
     }
+    @Test void factPrefillRoundTripsThroughReviewAndServerOwnedEvidenceCannotBeReplaced() throws Exception {
+        var response = upload(CandidateFactsExtractorTest.masterPdf());
+        assertEquals(201,response.statusCode(),response.body());
+        var resume = json.readTree(response.body()); var profile = resume.path("candidateProfile");
+        assertEquals("layout-v2",resume.path("layoutVersion").asText());
+        assertEquals("facts-v1",profile.path("factExtractorVersion").asText());
+        assertEquals("Ada@example.com",profile.path("facts").path("email").asText());
+        assertEquals(3,profile.path("facts").path("professionalLinks").size());
+        long id = profile.path("id").asLong();
+        assertEquals(profile,json.readTree(request("GET","/api/candidate-profiles/" + id,"").body()));
+        String body = "{\"expectedRevision\":1,\"profile\":" + profile.path("profile") + ",\"facts\":" + profile.path("facts")
+                + ",\"factExtraction\":{\"suggestions\":{\"email\":\"forged@example.com\"}}}";
+        var confirmed = request("PUT","/api/candidate-profiles/" + id + "/confirmation",body);
+        assertEquals(200,confirmed.statusCode(),confirmed.body());
+        assertEquals(profile.path("factExtraction"),json.readTree(confirmed.body()).path("factExtraction"));
+    }
     @Test void completeUploadRequirementsAndMatchingSlice() throws Exception {
         var uploaded = upload(PdfBoxResumeTextExtractorTest.pdf("Experience\nBackend Engineer at Acme\nJan 2020 - Dec 2022\n- Built Java and PostgreSQL services with reliable tests",false));
         assertEquals(201,uploaded.statusCode(),uploaded.body());

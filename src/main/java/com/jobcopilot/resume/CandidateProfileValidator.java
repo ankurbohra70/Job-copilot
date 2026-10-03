@@ -52,7 +52,7 @@ public final class CandidateProfileValidator {
         dates(value.start(), value.end(), value.ongoing(), "workExperience");
         return new CandidateProfileData.WorkExperience(text(value.title(), MAX_VALUE, true),
                 text(value.company(), MAX_VALUE, true), value.start(), value.end(), value.ongoing(),
-                canonical(value.bullets(), "workExperience.bullets", false, false),
+                canonical(value.bullets(), "workExperience.bullets", false, false, MAX_SOURCE),
                 text(value.sourceText(), MAX_SOURCE, true, true));
     }
 
@@ -67,7 +67,7 @@ public final class CandidateProfileValidator {
     private CandidateProfileData.Project project(CandidateProfileData.Project value) {
         if (value == null) throw new IllegalArgumentException("projects must not contain null");
         return new CandidateProfileData.Project(text(value.title(), MAX_VALUE, true),
-                canonical(value.bullets(), "projects.bullets", false, false),
+                canonical(value.bullets(), "projects.bullets", false, false, MAX_SOURCE),
                 canonical(value.technologies(), "projects.technologies", true, true),
                 text(value.sourceText(), MAX_SOURCE, true, true));
     }
@@ -104,10 +104,14 @@ public final class CandidateProfileValidator {
     }
 
     private List<String> canonical(List<String> values, String field, boolean skills, boolean sorted) {
+        return canonical(values, field, skills, sorted, MAX_VALUE);
+    }
+
+    private List<String> canonical(List<String> values, String field, boolean skills, boolean sorted, int maxLength) {
         List<String> source = bounded(values, field);
         LinkedHashMap<String, String> unique = new LinkedHashMap<>();
         for (String value : source) {
-            String cleaned = text(value, MAX_VALUE, false);
+            String cleaned = text(value, maxLength, false);
             if (skills) cleaned = vocabulary.canonical(cleaned);
             else if (sorted) cleaned = MatchingVocabulary.normalize(cleaned);
             String key = cleaned.toLowerCase(Locale.ROOT);

@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { buildConfirmation, factsToRequest } from './confirmPayload'
-import { sampleProfile } from '../../test/fixtures'
+import { sampleProfile, sampleFactProfile } from '../../test/fixtures'
 
 describe('buildConfirmation', () => {
+  it('copies links without mutating authority and excludes server-owned extraction metadata', () => {
+    const authority = sampleFactProfile()
+    const facts = factsToRequest(authority.facts)
+    facts.professionalLinks![0]!.url = ' https://github.com/grace '
+    expect(authority.facts.professionalLinks![0]!.url).toBe('https://github.com/ada')
+    const payload = buildConfirmation(authority, {
+      facts, skills: authority.profile.skills, totalExperienceMonths: authority.profile.totalExperienceMonths,
+      workExperience: authority.profile.workExperience, education: authority.profile.education, projects: authority.profile.projects,
+    })
+    expect(payload.facts.professionalLinks![0]!.url).toBe('https://github.com/grace')
+    expect(payload).not.toHaveProperty('factExtraction')
+    expect(payload).not.toHaveProperty('factExtractorVersion')
+    expect(payload.facts).not.toHaveProperty('factExtraction')
+    expect(payload.profile.evidence).toEqual(authority.profile.evidence)
+  })
   it('keeps hidden nested fields while merging visible edits', () => {
     const authority = sampleProfile()
     const payload = buildConfirmation(authority, {
